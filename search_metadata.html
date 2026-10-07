@@ -61,7 +61,21 @@
 </head>
 <body>
 <header>
-  <h1>音乐元数据搜索 <button id="themeBtn" title="切换深色/浅色" style="float:right;padding:4px 9px;font-size:12px">🌙 深色</button></h1>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h1 style="margin:0;flex:1 1 auto">音乐元数据搜索</h1>
+    <div id="settingsBox" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);white-space:nowrap">
+      <span id="settingsTag">⚙️ 设置：</span>
+      <button id="themeBtn" title="切换深色/浅色" style="padding:5px 10px;font-size:12px">🌙 深色</button>
+      <select id="langSel" title="界面语言" style="padding:5px 8px;font-size:12px">
+        <option value="zh">中文</option>
+        <option value="zh-TW">繁體中文</option>
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+        <option value="ru">Русский</option>
+      </select>
+    </div>
+  </div>
   <div class="sub">Apple Music / Deezer / MusicBrainz / QQ音乐 / 网易云 · 多地区 · 全部请求在本机发出</div>
 </header>
 
@@ -174,22 +188,9 @@
           q: "Название / исполнитель (напр. Jay Chou Sunny Day)",
           go: "Поиск", json: "Экспорт JSON", login: "Войти в Spotify", region: "Регионы:", theme: ["🌙 Тёмная", "☀️ Светлая"] },
   };
-  const sel = document.createElement("select");
-  sel.id = "langSel";
-  sel.style.cssText = "float:right;margin-left:6px;padding:4px 8px;font-size:12px";
-  sel.innerHTML = '<option value="zh">中文</option>'
-    + '<option value="zh-TW">繁體中文</option>'
-    + '<option value="en">English</option>'
-    + '<option value="ja">日本語</option>'
-    + '<option value="ko">한국어</option>'
-    + '<option value="ru">Русский</option>';
-  $("themeBtn").after(sel);
-  // ⚙️ 设置 标签（放在两个选择器前面 ✅）
-  const tag = document.createElement("span");
-  tag.id = "settingsTag";
-  tag.style.cssText = "float:right;margin-left:8px;font-size:12px;color:var(--dim)";
-  tag.textContent = "⚙️ 设置：";
-  $("themeBtn").before(tag);
+  // 元素已在 HTML 里（#settingsTag / #themeBtn / #langSel）✅ —— 这里只做绑定 ✅
+  const sel = $("langSel");
+  if (!sel) return;
   // 主题变化时刷新按钮文案 ✅
   $("themeBtn").addEventListener("themechanged", () => apply(sel.value));
 
