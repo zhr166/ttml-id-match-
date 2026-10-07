@@ -6,10 +6,20 @@
 <title>音乐元数据搜索（Apple Music + Spotify · 多地区）</title>
 <style>
   :root{--bg:#0f1115;--panel:#171a21;--panel2:#1e2230;--line:#2a3040;--fg:#e8eaf0;--dim:#98a2b8;--accent:#4f8cff;--ok:#39d98a;--sp:#1db954}
-  /* ☀️ 浅色主题（点右上角按钮切换 ✅，选择会记住 ✅） */
-  html[data-theme="light"]{--bg:#f5f7fb;--panel:#ffffff;--panel2:#eceff6;--line:#d5dbe6;--fg:#161a22;--dim:#5a6474;--accent:#2f6bff;--ok:#0d9f5f;--sp:#1db954}
-  html[data-theme="light"] .toast{color:#fff}
-  html[data-theme="light"] button.primary{color:#fff}
+  /* ☀️ 浅色主题（点右上角「⚙️ 设置」切换 ✅，选择会记住 ✅）
+     同时对 html 和 body 生效 ✅ —— 避免某些浏览器/嵌入环境下 html 选择器不匹配 ❌ */
+  html[data-theme="light"], body[data-theme="light"],
+  html.light, body.light{
+    --bg:#f5f7fb;--panel:#ffffff;--panel2:#eceff6;--line:#d5dbe6;
+    --fg:#161a22;--dim:#5a6474;--accent:#2f6bff;--ok:#0d9f5f;--sp:#1db954;
+  }
+  html[data-theme="light"] .toast, body[data-theme="light"] .toast{color:#fff}
+  html[data-theme="light"] .srcpill.apple, body[data-theme="light"] .srcpill.apple{color:#33509e}
+  html[data-theme="light"] .srcpill.spotify, body[data-theme="light"] .srcpill.spotify{color:#0f7a37}
+  html[data-theme="light"] .srcpill.deezer, body[data-theme="light"] .srcpill.deezer{color:#a35b00}
+  html[data-theme="light"] .srcpill.musicbrainz, body[data-theme="light"] .srcpill.musicbrainz{color:#6b3fb5}
+  html[data-theme="light"] .srcpill.qq, body[data-theme="light"] .srcpill.qq{color:#0a7a5a}
+  html[data-theme="light"] .srcpill.netease, body[data-theme="light"] .srcpill.netease{color:#c62828}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
   header{padding:16px 22px 8px;border-bottom:1px solid var(--line)}
@@ -113,26 +123,36 @@
 </section>
 
 <script>
-/* ---- 🌙/☀️ 深浅色模式（记住选择 ✅）---- */
+/* ---- ⚙️ 设置：主题（深/浅色）+ 语言（同时作用于 html 与 body ✅，选择都记住 ✅）---- */
 (function () {
-  const saved = localStorage.getItem("mm-theme") || "dark";
-  document.documentElement.dataset.theme = saved;
-  const sync = () => {
-    const dark = document.documentElement.dataset.theme !== "light";
-    $("themeBtn").textContent = dark ? "🌙 深色" : "☀️ 浅色";
-  };
-  sync();
+  const root = document.documentElement;
+  const body = document.body || root;
+  function applyTheme(mode) {
+    const light = mode === "light";
+    // 同时写 attribute 与 class ✅ —— 保险起见两种选择器都能命中 ✅
+    root.dataset.theme = light ? "light" : "dark";
+    body.dataset.theme = light ? "light" : "dark";
+    root.classList.toggle("light", light);
+    body.classList.toggle("light", light);
+    const btn = $("themeBtn");
+    if (btn) {
+      // 文案交给语言模块统一刷新 ✅（这里只存状态）
+      btn.dataset.mode = light ? "light" : "dark";
+      btn.dispatchEvent(new CustomEvent("themechanged", { bubbles: true }));
+    }
+  }
+  window.__applyTheme = applyTheme;
+  applyTheme(localStorage.getItem("mm-theme") || "dark");
   $("themeBtn").addEventListener("click", () => {
-    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = next;
+    const next = (root.dataset.theme === "light") ? "dark" : "light";
     localStorage.setItem("mm-theme", next);
-    sync();
+    applyTheme(next);
   });
 })();
 </script>
 
 <script>
-/* ---- 🌐 语言切换：中文 / English（记住选择 ✅）---- */
+/* ---- 🌐 语言（中文 / 繁體中文 / English / 日本語 / 한국어 / Русский ✅）---- */
 (function () {
   const L = {
     zh: { sub: "Apple Music / Deezer / MusicBrainz / QQ音乐 / 网易云 · 多地区 · 全部请求在本机发出",
@@ -156,7 +176,7 @@
   };
   const sel = document.createElement("select");
   sel.id = "langSel";
-  sel.style.cssText = "float:right;margin-left:8px;padding:4px 8px;font-size:12px";
+  sel.style.cssText = "float:right;margin-left:6px;padding:4px 8px;font-size:12px";
   sel.innerHTML = '<option value="zh">中文</option>'
     + '<option value="zh-TW">繁體中文</option>'
     + '<option value="en">English</option>'
@@ -164,6 +184,14 @@
     + '<option value="ko">한국어</option>'
     + '<option value="ru">Русский</option>';
   $("themeBtn").after(sel);
+  // ⚙️ 设置 标签（放在两个选择器前面 ✅）
+  const tag = document.createElement("span");
+  tag.id = "settingsTag";
+  tag.style.cssText = "float:right;margin-left:8px;font-size:12px;color:var(--dim)";
+  tag.textContent = "⚙️ 设置：";
+  $("themeBtn").before(tag);
+  // 主题变化时刷新按钮文案 ✅
+  $("themeBtn").addEventListener("themechanged", () => apply(sel.value));
 
   function apply(lang) {
     const d = L[lang] || L.zh;
