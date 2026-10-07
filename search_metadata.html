@@ -295,9 +295,9 @@ $("list").addEventListener("click", (e) => {
         if (d.error) { toast("查询出错：" + d.error); return; }
         if (!d.count) { toast("MusicBrainz 没找到 Spotify 链接 → 请用「查 Spotify」"); return; }
         const first = d.links[0];
-        navigator.clipboard.writeText(first.url)
-          .then(() => toast("已复制 Spotify：" + first.id), () => toast(first.url));
-        window.open(first.url, "_blank");
+        // 只复制 ID，不跳转 ✅
+        navigator.clipboard.writeText(first.id)
+          .then(() => toast("已复制 Spotify ID：" + first.id), () => toast(first.url));
       })
       .catch((err) => toast("查询失败：" + err.message + " → 请用「查 Spotify」"));
   }
