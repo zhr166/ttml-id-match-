@@ -224,6 +224,9 @@ function render() {
           ${t.genre ? `<span>${esc(t.genre)}</span>` : ""}
           <span>${esc(t.release_date || "")}</span>
           <span class="chip ok">${t.source === "spotify" ? "Track " : t.source === "qq" ? "songmid " : t.source === "netease" ? "网易云 ID " : "Apple ID "}${esc(t.track_id)}</span>
+          ${t.song_id ? `<span class="chip ok">QQ数字ID ${esc(t.song_id)}</span>` : ""}
+          ${t.album_id_num ? `<span class="chip">专辑数字ID ${esc(t.album_id_num)}</span>` : ""}
+          ${t.spotify_id ? `<span class="chip ok">Spotify ID ${esc(t.spotify_id)}</span>` : ""}
           ${t.isrc ? `<span class="chip ok">ISRC ${esc(t.isrc)}</span>` : ""}
         </div>
       </div>
@@ -295,7 +298,9 @@ $("list").addEventListener("click", (e) => {
         if (d.error) { toast("查询出错：" + d.error); return; }
         if (!d.count) { toast("MusicBrainz 没找到 Spotify 链接 → 请用「查 Spotify」"); return; }
         const first = d.links[0];
-        // 只复制 ID，不跳转 ✅
+        // 可视化：把 Spotify ID 写进这一行并重绘 ✅（同时复制 ✅）
+        const row = lastResults[Number(spm.dataset.spmb)];
+        if (row) { row.spotify_id = first.id; render(); }
         navigator.clipboard.writeText(first.id)
           .then(() => toast("已复制 Spotify ID：" + first.id), () => toast(first.url));
       })
