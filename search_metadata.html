@@ -24,6 +24,9 @@
   .srcpill.spotify{color:var(--sp);border-color:#1c3a28}
   .srcpill.deezer{color:#ffb84d;border-color:#3a2a12}
   .srcpill.musicbrainz{color:#c58cff;border-color:#33224a}
+  .srcpill.qq{color:#3fd6a0;border-color:#123a2c}
+  .srcpill.netease{color:#ff6b6b;border-color:#3d1b1b}
+  .srcpill.albumid{color:#ffd166;border-color:#3d3418}
   main{padding:14px 22px 44px}
   .status{color:var(--dim);font-size:12px;margin:4px 0 12px;white-space:pre-wrap}
   .list{display:flex;flex-direction:column;gap:8px}
@@ -54,11 +57,15 @@
     <option value="apple" selected>Apple Music</option>
     <option value="deezer">Deezer（免费 · 带 ISRC）</option>
     <option value="musicbrainz">MusicBrainz（免费）</option>
+    <option value="qq">QQ音乐（免费 · 歌曲ID + 专辑ID）</option>
+    <option value="netease">网易云音乐（免费 · 歌曲ID + 专辑ID）</option>
+    <option value="qq,netease">QQ音乐 + 网易云</option>
     <option value="apple,deezer">Apple + Deezer ★</option>
+    <option value="apple,deezer,qq,netease">Apple + Deezer + QQ + 网易云 ★★</option>
     <option value="apple,deezer,musicbrainz">Apple + Deezer + MusicBrainz ★★</option>
-    <option value="spotify">Spotify</option>
+    <option value="apple,deezer,musicbrainz,qq,netease">全部五个源（最全）</option>
+    <option value="spotify">Spotify（未开发完成 ⚠️）</option>
     <option value="apple,spotify">Apple + Spotify</option>
-    <option value="apple,deezer,musicbrainz,spotify">全部四个源</option>
   </select>
   <select id="limit">
     <option value="5">每区 5 条</option>
@@ -210,13 +217,13 @@ function render() {
       <img src="${t.artwork || ""}" alt="" loading="lazy" />
       <div>
         <div class="t">${esc(t.name)} ${(t.countries || []).map((c) => `<span class="chip">${c}</span>`).join(" ")}
-          <span class="srcpill ${t.source}">${t.source === "spotify" ? "Spotify" : t.source === "deezer" ? "Deezer" : t.source === "musicbrainz" ? "MusicBrainz" : "Apple"}</span></div>
-        <div class="a">${esc(t.artist)} — ${esc(t.album)}</div>
+          <span class="srcpill ${t.source}">${t.source === "spotify" ? "Spotify" : t.source === "deezer" ? "Deezer" : t.source === "musicbrainz" ? "MusicBrainz" : t.source === "qq" ? "QQ音乐" : t.source === "netease" ? "网易云" : "Apple"}</span></div>
+        <div class="a">${esc(t.artist)} — ${esc(t.album)}${t.album_id ? ` <span class="srcpill albumid">专辑ID ${esc(t.album_id)}</span>` : ""}</div>
         <div class="meta">
           <span>${fmtDur(t.duration_ms)}</span>
           ${t.genre ? `<span>${esc(t.genre)}</span>` : ""}
           <span>${esc(t.release_date || "")}</span>
-          <span class="chip ok">${t.source === "spotify" ? "Track " : "Apple ID "}${esc(t.track_id)}</span>
+          <span class="chip ok">${t.source === "spotify" ? "Track " : t.source === "qq" ? "songmid " : t.source === "netease" ? "网易云 ID " : "Apple ID "}${esc(t.track_id)}</span>
           ${t.isrc ? `<span class="chip ok">ISRC ${esc(t.isrc)}</span>` : ""}
         </div>
       </div>
@@ -225,6 +232,7 @@ function render() {
         <button data-copyname="${i}">复制歌名</button>
         ${t.isrc ? `<button data-copyisrc="${i}">复制 ISRC</button>` : ""}
         <button data-copyalbum="${i}">复制专辑</button>
+        ${t.album_id ? `<button data-copyalbumid="${i}">复制专辑ID</button>` : ""}
         <button data-copyline="${i}">复制整行</button>
         <button data-open="${i}">打开</button>
       </div>
@@ -251,6 +259,7 @@ $("list").addEventListener("click", (e) => {
   const cn = e.target.closest("[data-copyname]");
   const ci = e.target.closest("[data-copyisrc]");
   const ca = e.target.closest("[data-copyalbum]");
+  const cai = e.target.closest("[data-copyalbumid]");
   const cl = e.target.closest("[data-copyline]");
   const o = e.target.closest("[data-open]");
   const put = (text, label) =>
@@ -259,6 +268,7 @@ $("list").addEventListener("click", (e) => {
   if (cn) { const t = lastResults[Number(cn.dataset.copyname)]; put(t.name, t.name); }
   if (ci) { const t = lastResults[Number(ci.dataset.copyisrc)]; put(t.isrc, t.isrc); }
   if (ca) { const t = lastResults[Number(ca.dataset.copyalbum)]; put(t.album, t.album); }
+  if (cai) { const t = lastResults[Number(cai.dataset.copyalbumid)]; put(t.album_id, t.album_id); }
   if (cl) {
     const t = lastResults[Number(cl.dataset.copyline)];
     put([t.name, t.artist, t.album, t.isrc, t.track_id].filter(Boolean).join(" | "), "整行");
