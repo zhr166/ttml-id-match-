@@ -48,7 +48,7 @@
 <body>
 <header>
   <h1>音乐元数据搜索</h1>
-  <div class="sub">Apple Music / iTunes（无需密钥）+ Spotify（可选）· 多地区 · 全部请求在你本机发出</div>
+  <div class="sub">Apple Music / Deezer / MusicBrainz / QQ音乐 / 网易云 · 多地区 · 全部请求在本机发出</div>
 </header>
 
 <div class="bar">
@@ -193,7 +193,7 @@ async function run() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     lastResults = data.results || [];
-    let msg = `共 ${data.count ?? lastResults.length} 条（已跨区合并）`;
+    let msg = `共 ${data.count ?? lastResults.length} 条`;
     if (data.failed && data.failed.length) msg += `\n失败：${data.failed.join(", ")}`;
     if (data.warnings && data.warnings.length) msg += `\n提示：${data.warnings.join("；")}`;
     $("status").textContent = msg;
