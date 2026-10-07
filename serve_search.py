@@ -283,8 +283,10 @@ def qq_search(term: str, market: str, limit: int) -> list[dict]:
             "artist": "/".join(x.get("name", "") for x in (s.get("singer") or [])),
             "album": al.get("name") or "",
             "duration_ms": int(s.get("interval") or 0) * 1000,
-            "track_id": mid,
-            "album_id": al.get("mid") or "",
+            "track_id": mid,                                    # songmid（字母数字）✅
+            "song_id": str(s.get("id") or s.get("songid") or ""),   # ★ 全数字 songid ✅
+            "album_id": al.get("mid") or "",                     # albummid ✅
+            "album_id_num": str(al.get("id") or ""),             # ★ 全数字 album id ✅
             "isrc": "",
             "genre": "",
             "release_date": (s.get("time_public") or "")[:10],
