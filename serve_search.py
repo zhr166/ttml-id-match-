@@ -756,7 +756,11 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/search":
             qs = urllib.parse.parse_qs(parsed.query)
             term = (qs.get("term") or [""])[0].strip()
-            countries = [c.strip().upper() for c in (qs.get("countries") or ["TW,HK,JP,KR,US,CA"])[0].split(",") if c.strip()]
+            # ★ 注意：网页没勾地区时 countries 参数为空 ✅
+            #   原来是 `or ["TW,HK,JP,KR,US,CA"]` ❌ → 空参数会被当成"默认六区" ✅
+            #   → QQ/网易云 结果都被打上 TW 标签（甩不掉的"狗皮膏药"）❌
+            #   现在默认改为空 ✅ → 交给 merge_search 的"无地区"逻辑处理 ✅
+            countries = [c.strip().upper() for c in (qs.get("countries") or [""])[0].split(",") if c.strip()]
             sources = [s.strip().lower() for s in (qs.get("sources") or ["apple"])[0].split(",") if s.strip()]
             try:
                 limit = max(1, min(50, int((qs.get("limit") or ["10"])[0])))
