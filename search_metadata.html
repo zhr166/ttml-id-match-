@@ -411,6 +411,10 @@ const API_PORT = 8765;
 const $ = (id) => document.getElementById(id);
 let lastResults = [];
 
+/* ✅ 语言文案取值：i18n 脚本已把词典挂到 window.__T ✅
+   （之前 render() 里直接用 T() → 未定义 → 抛错 → 结果列表渲染不出来 ❌） */
+const T = (k) => (window.__T ? window.__T(k) : k);
+
 const regionsBox = $("regions");
 regionsBox.innerHTML = "<span>" + (window.__T ? window.__T("region") : "地区：") + "</span>" + REGIONS.map((c) =>
   `<label><input type="checkbox" value="${c}" ${DEFAULT_ON.includes(c) ? "checked" : ""}/> ${c}</label>`
