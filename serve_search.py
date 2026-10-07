@@ -290,7 +290,9 @@ def qq_search(term: str, market: str, limit: int) -> list[dict]:
             "isrc": "",
             "genre": "",
             "release_date": (s.get("time_public") or "")[:10],
-            "artwork": "",
+            # ★ QQ 封面：用 150x150 小图 ✅（越大越慢；之前是空字符串 ❌ → 显示空白 ✅）
+            "artwork": (f"https://y.qq.com/music/photo_new/T002R150x150M000{al.get('mid')}.jpg"
+                        if al.get("mid") else ""),
             "url": f"https://y.qq.com/n/ryqq/songDetail/{mid}",
             "countries": [market] if market else [],
         })
@@ -325,7 +327,9 @@ def netease_search(term: str, market: str, limit: int) -> list[dict]:
             "isrc": "",
             "genre": "",
             "release_date": "",
-            "artwork": al.get("picUrl") or "",
+            # ★ 网易云封面：加 ?param=100y100 取缩略图 ✅（原图很大很慢 ❌）
+            "artwork": ((al.get("picUrl") or "").split("?")[0] + "?param=100y100"
+                        if al.get("picUrl") else ""),
             "url": f"https://music.163.com/#/song?id={sid}",
             "countries": [market] if market else [],
         })
