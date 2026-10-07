@@ -137,8 +137,10 @@
 </section>
 
 <script>
-/* ---- ⚙️ 设置：主题（深/浅色）+ 语言（同时作用于 html 与 body ✅，选择都记住 ✅）---- */
+/* ---- ⚙️ 设置：主题（深/浅色）—— 注意：本脚本在主脚本之前执行 ✅
+        所以**必须自带 $ 定义** ❌ 否则会 ReferenceError 让整个脚本失效 ❌ ---- */
 (function () {
+  const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
   const body = document.body || root;
   function applyTheme(mode) {
@@ -166,8 +168,10 @@
 </script>
 
 <script>
-/* ---- 🌐 语言（中文 / 繁體中文 / English / 日本語 / 한국어 / Русский ✅）---- */
+/* ---- 🌐 语言（中文 / 繁體中文 / English / 日本語 / 한국어 / Русский ✅）
+        同样自带 $ 定义 ✅（本脚本在主脚本之前执行 ✅）---- */
 (function () {
+  const $ = (id) => document.getElementById(id);
   const L = {
     zh: { sub: "Apple Music / Deezer / MusicBrainz / QQ音乐 / 网易云 · 多地区 · 全部请求在本机发出",
           q: "歌名 / 艺人，例如：周杰伦 晴天 / hoyomix",
