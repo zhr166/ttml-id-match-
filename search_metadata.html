@@ -234,6 +234,8 @@ function render() {
         <button data-copyalbum="${i}">复制专辑</button>
         ${t.album_id ? `<button data-copyalbumid="${i}">复制专辑ID</button>` : ""}
         <button data-copyline="${i}">复制整行</button>
+        <button data-spsearch="${i}">查 Spotify</button>
+        <button data-spmb="${i}">查 Spotify(MB)</button>
         <button data-open="${i}">打开</button>
       </div>
     </div>`).join("");
@@ -262,6 +264,8 @@ $("list").addEventListener("click", (e) => {
   const cai = e.target.closest("[data-copyalbumid]");
   const cl = e.target.closest("[data-copyline]");
   const o = e.target.closest("[data-open]");
+  const sps = e.target.closest("[data-spsearch]");
+  const spm = e.target.closest("[data-spmb]");
   const put = (text, label) =>
     navigator.clipboard.writeText(String(text ?? "")).then(() => toast("已复制" + (label ? "：" + label : "")), () => toast("复制失败"));
   if (c) { const t = lastResults[Number(c.dataset.copy)]; put(t.track_id, t.track_id); }
@@ -274,6 +278,42 @@ $("list").addEventListener("click", (e) => {
     put([t.name, t.artist, t.album, t.isrc, t.track_id].filter(Boolean).join(" | "), "整行");
   }
   if (o) { const t = lastResults[Number(o.dataset.open)]; if (t.url) window.open(t.url, "_blank"); }
+  if (sps) {
+    // 不登录、不用 API：搜索引擎直接找 open.spotify.com 的曲目页 ✅
+    const t = lastResults[Number(sps.dataset.spsearch)];
+    window.open("https://www.bing.com/search?q=" +
+      encodeURIComponent(`site:open.spotify.com ${t.name} ${t.artist}`), "_blank");
+    toast("已打开搜索：site:open.spotify.com " + t.name + " " + t.artist);
+  }
+  if (spm) {
+    // MusicBrainz（免密钥 ✅）：查该录音的 streaming 链接里有没有 Spotify ✅
+    const t = lastResults[Number(spm.dataset.spmb)];
+    const mb = (q) => fetch("https://musicbrainz.org/ws/2/recording/?query=" + encodeURIComponent(q) +
+      "&fmt=json&limit=3", { headers: { Accept: "application/json" } }).then((r) => r.json());
+    const rel = (id) => fetch("https://musicbrainz.org/ws/2/recording/" + id + "?inc=url-rels&fmt=json",
+      { headers: { Accept: "application/json" } }).then((r) => r.json());
+    toast("正在查 MusicBrainz…");
+    mb(`recording:"${t.name}" AND artist:"${t.artist}"`)
+      .then((d) => {
+        const rs = d.recordings || [];
+        if (!rs.length) throw new Error("MusicBrainz 没有命中");
+        return Promise.all(rs.slice(0, 3).map((r) => rel(r.id).catch(() => null)));
+      })
+      .then((list) => {
+        for (const d of list) {
+          for (const r of ((d && d.relations) || [])) {
+            const u = (r.url || {}).resource || "";
+            if (u.includes("open.spotify.com")) {
+              navigator.clipboard.writeText(u).then(() => toast("已复制 Spotify 链接：" + u), () => toast(u));
+              window.open(u, "_blank");
+              return;
+            }
+          }
+        }
+        toast("MusicBrainz 没找到 Spotify 链接 → 请用「查 Spotify」");
+      })
+      .catch((err) => toast("MusicBrainz 查询失败：" + err.message + " → 请用「查 Spotify」"));
+  }
 });
 
 /* 启动时探测 Spotify 是否已配置 ✅ */
