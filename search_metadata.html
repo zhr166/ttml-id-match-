@@ -88,8 +88,9 @@
 
 <div class="toast" id="toast">已复制</div>
 
-<!-- ══════════ Spotify 多地区查询（ISRC 跨区 / Track Relinking ✅）══════════ -->
-<section style="margin:18px 22px 40px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px 16px">
+<!-- ══════════ Spotify 多地区查询（默认隐藏 ✅：Spotify 尚未完成，ID 已能从每行按钮获取 ✅）
+     想恢复：把下面的 display:none 去掉即可 ✅ ══════════ -->
+<section id="spPanel" style="display:none;margin:18px 22px 40px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px 16px">
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <b style="font-size:15px">Spotify 多地区查询</b>
     <span style="color:var(--dim);font-size:12px">用 ISRC 跨区找各区 ID（最准）· 或按 Track ID 查可播性（Track Relinking）· 需要 Spotify 凭据</span>
