@@ -193,6 +193,47 @@
           go: "Поиск", json: "Экспорт JSON", login: "Войти в Spotify", region: "Регионы:", theme: ["🌙 Тёмная", "☀️ Светлая"] },
   };
   // 元素已在 HTML 里（#settingsTag / #themeBtn / #langSel）✅ —— 这里只做绑定 ✅
+  // 数据源下拉 / 每区条数 的文案（按下标对应 ✅ 顺序与 HTML 一致 ✅）
+  const SRC_L = {
+    zh: ["Apple Music", "Deezer（免费 · 带 ISRC）", "MusicBrainz（免费）",
+         "QQ音乐（免费 · 歌曲ID + 专辑ID）", "网易云音乐（免费 · 歌曲ID + 专辑ID）",
+         "QQ音乐 + 网易云", "Apple + Deezer ★",
+         "Apple + Deezer + QQ + 网易云 ★★", "Apple + Deezer + MusicBrainz ★★",
+         "全部五个源（最全）", "Spotify（未开发完成 ⚠️）", "Apple + Spotify"],
+    "zh-TW": ["Apple Music", "Deezer（免費 · 含 ISRC）", "MusicBrainz（免費）",
+         "QQ 音樂（免費 · 歌曲ID + 專輯ID）", "網易雲音樂（免費 · 歌曲ID + 專輯ID）",
+         "QQ 音樂 + 網易雲", "Apple + Deezer ★",
+         "Apple + Deezer + QQ + 網易雲 ★★", "Apple + Deezer + MusicBrainz ★★",
+         "全部五個來源（最全）", "Spotify（尚未完成 ⚠️）", "Apple + Spotify"],
+    en: ["Apple Music", "Deezer (free · ISRC)", "MusicBrainz (free)",
+         "QQ Music (free · song ID + album ID)", "NetEase (free · song ID + album ID)",
+         "QQ Music + NetEase", "Apple + Deezer ★",
+         "Apple + Deezer + QQ + NetEase ★★", "Apple + Deezer + MusicBrainz ★★",
+         "All five sources", "Spotify (unfinished ⚠️)", "Apple + Spotify"],
+    ja: ["Apple Music", "Deezer（無料 · ISRC 付き）", "MusicBrainz（無料）",
+         "QQ Music（無料 · 曲ID + アルバムID）", "NetEase（無料 · 曲ID + アルバムID）",
+         "QQ Music + NetEase", "Apple + Deezer ★",
+         "Apple + Deezer + QQ + NetEase ★★", "Apple + Deezer + MusicBrainz ★★",
+         "5 つのソース全部", "Spotify（未完成 ⚠️）", "Apple + Spotify"],
+    ko: ["Apple Music", "Deezer (무료 · ISRC)", "MusicBrainz (무료)",
+         "QQ뮤직 (무료 · 곡 ID + 앨범 ID)", "NetEase (무료 · 곡 ID + 앨범 ID)",
+         "QQ뮤직 + NetEase", "Apple + Deezer ★",
+         "Apple + Deezer + QQ + NetEase ★★", "Apple + Deezer + MusicBrainz ★★",
+         "5개 소스 모두", "Spotify (미완성 ⚠️)", "Apple + Spotify"],
+    ru: ["Apple Music", "Deezer (бесплатно · ISRC)", "MusicBrainz (бесплатно)",
+         "QQ Music (бесплатно · ID песни + ID альбома)", "NetEase (бесплатно · ID песни + ID альбома)",
+         "QQ Music + NetEase", "Apple + Deezer ★",
+         "Apple + Deezer + QQ + NetEase ★★", "Apple + Deezer + MusicBrainz ★★",
+         "Все пять источников", "Spotify (не завершено ⚠️)", "Apple + Spotify"],
+  };
+  const LIMIT_L = {
+    zh: ["每区 5 条", "每区 10 条", "每区 25 条", "每区 50 条"],
+    "zh-TW": ["每區 5 筆", "每區 10 筆", "每區 25 筆", "每區 50 筆"],
+    en: ["5 per region", "10 per region", "25 per region", "50 per region"],
+    ja: ["各リージョン 5 件", "各リージョン 10 件", "各リージョン 25 件", "各リージョン 50 件"],
+    ko: ["지역당 5개", "지역당 10개", "지역당 25개", "지역당 50개"],
+    ru: ["По 5 на регион", "По 10 на регион", "По 25 на регион", "По 50 на регион"],
+  };
   const T = (k) => ((window.__L && window.__L[window.__lang || "zh"]) || L.zh)[k] || k;
   window.__T = T;
   window.__lang = localStorage.getItem("mm-lang") || "zh";
@@ -232,6 +273,36 @@
     if ($("spLogin")) $("spLogin").textContent = d.login;
     const rb = $("regionsBox");
     if (rb && rb.firstElementChild) rb.firstElementChild.textContent = d.region;
+    // 左上角大标题 ✅（h1 里只有文字，设置控件在 #settingsBox ✅ 不会被覆盖）
+    const H1 = { zh: "音乐元数据搜索", "zh-TW": "音樂元資料搜尋", en: "Music Metadata Search",
+                 ja: "音楽メタデータ検索", ko: "음악 메타데이터 검색", ru: "Поиск метаданных музыки" };
+    const h1 = document.querySelector("header h1");
+    if (h1) h1.textContent = H1[lang] || H1.zh;
+    // 数据源下拉 ✅
+    const ssrc = $("source");
+    if (ssrc) {
+      const arr = SRC_L[lang] || SRC_L.zh;
+      [...ssrc.options].forEach((op, i) => { if (arr[i]) op.textContent = arr[i]; });
+    }
+    // 每区条数下拉 ✅
+    const slim = $("limit");
+    if (slim) {
+      const arr2 = LIMIT_L[lang] || LIMIT_L.zh;
+      [...slim.options].forEach((op, i) => { if (arr2[i]) op.textContent = arr2[i]; });
+    }
+    // 页面标题 + 登录按钮悬停提示 ✅
+    document.title = (lang === "zh" ? "音乐元数据搜索" : lang === "zh-TW" ? "音樂元資料搜尋"
+      : lang === "ja" ? "音楽メタデータ検索" : lang === "ko" ? "음악 메타데이터 검색"
+      : lang === "ru" ? "Поиск метаданных музыки" : "Music Metadata Search")
+      + " (Apple Music / Deezer / QQ Music / NetEase)";
+    if ($("spLogin")) {
+      $("spLogin").title = (lang === "zh" ? "授权后可用你的账号搜索 Spotify 任意地区（PKCE，无需 secret）"
+        : lang === "zh-TW" ? "授權後可用你的帳號搜尋 Spotify 任意地區（PKCE，無需 secret）"
+        : lang === "ja" ? "認証すると Spotify の任意の地域を検索できます（PKCE・secret 不要）"
+        : lang === "ko" ? "인증하면 Spotify 모든 지역을 검색할 수 있습니다 (PKCE, secret 불필요)"
+        : lang === "ru" ? "После входа можно искать Spotify в любом регионе (PKCE, без secret)"
+        : "After signing in you can search Spotify in any region (PKCE, no secret needed)");
+    }
     // 顺带更新主题按钮文案 ✅
     const dark = document.documentElement.dataset.theme !== "light";
     if ($("themeBtn")) $("themeBtn").textContent = dark ? d.theme[0] : d.theme[1];
