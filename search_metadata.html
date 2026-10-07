@@ -222,7 +222,7 @@ function render() {
     <div class="row">
       <img src="${t.artwork || ""}" alt="" loading="lazy" />
       <div>
-        <div class="t">${esc(t.name)} ${(t.countries || []).map((c) => `<span class="chip">${c}</span>`).join(" ")}
+        <div class="t">${esc(t.name)} ${(t.countries || []).filter((c) => c && c !== "--").map((c) => `<span class="chip">${c}</span>`).join(" ")}
           <span class="srcpill ${t.source}">${t.source === "spotify" ? "Spotify" : t.source === "deezer" ? "Deezer" : t.source === "musicbrainz" ? "MusicBrainz" : t.source === "qq" ? "QQ音乐" : t.source === "netease" ? "网易云" : "Apple"}</span></div>
         <div class="a">${esc(t.artist)} — ${esc(t.album)}${t.album_id ? ` <span class="srcpill albumid">专辑ID ${esc(t.album_id)}</span>` : ""}</div>
         <div class="meta">
