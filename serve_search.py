@@ -130,16 +130,17 @@ def apple_search(term: str, country: str, limit: int) -> list[dict]:
 
         tok = _ai.web_token()
         if tok:
-            # 指定区优先；取不到结果再依次试"目录最全"的区 ✅（保证 KR/CN 也能出结果 ✅）
+            # 指定区优先；取不到结果再依次试"目录最全"的区 ✅
+            # ★ 并行请求所有候选区 ✅（原来串行：一个区慢/超时就要干等，整体好几秒 ❌）
             first = (country or "us").lower()
             order = [first] + [x for x in ("us", "jp", "tw", "hk") if x != first]
-            for sf in order:
+            import concurrent.futures as _cf2
+
+            def _one_storefront(sf: str):
                 q = urllib.parse.urlencode({"term": term, "types": "songs", "limit": limit})
                 url = f"{AMP_API}/{sf}/search?{q}"
                 try:
-                    # ★ 服务器里的辅助函数是 _get_json ✅（会直接返回 dict ✅）
-                    #   之前误写成 _get ❌ → NameError → 被 except 吞掉 → 全部回退 iTunes → CN/KR 0 条 ❌
-                    data = _get_json(
+                    d1 = _get_json(
                         url,
                         headers={
                             "Authorization": f"Bearer {tok}",
@@ -147,12 +148,20 @@ def apple_search(term: str, country: str, limit: int) -> list[dict]:
                             "Referer": "https://music.apple.com/",
                             "Accept": "application/json",
                         },
-                        timeout=60,
+                        timeout=20,
                     )
                 except Exception as exc:
                     APPLE_SEARCH_ERRORS.append(f"{sf}: {str(exc)[:90]}")
-                    continue
-                songs = (((data.get("results") or {}).get("songs") or {}).get("data")) or []
+                    return sf, []
+                return sf, ((((d1.get("results") or {}).get("songs") or {}).get("data")) or [])
+
+            storefronts: dict[str, list] = {}
+            with _cf2.ThreadPoolExecutor(max_workers=5) as _p2:
+                for sf, songs in _p2.map(_one_storefront, order):
+                    storefronts[sf] = songs
+
+            for sf in order:                      # 仍按优先级取第一个有结果的区 ✅
+                songs = storefronts.get(sf) or []
                 if not songs:
                     APPLE_SEARCH_ERRORS.append(f"{sf}: 0 results")
                     continue
