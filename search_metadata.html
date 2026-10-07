@@ -550,7 +550,15 @@ $("list").addEventListener("click", (e) => {
       .then((r) => r.json())
       .then((d) => {
         if (d.error) { toast("查询出错：" + d.error); return; }
-        if (!d.count) { toast("MusicBrainz 没找到 Spotify 链接 → 请用「查 Spotify」"); return; }
+        if (!d.count) {
+          // ★ MusicBrainz 没有 Spotify 链接（它本来覆盖就不全 ✅）
+          //   → 自动改用搜索引擎兜底 ✅ 保证按钮一定有用 ✅
+          const t2 = lastResults[Number(spm.dataset.spmb)] || {};
+          toast("MusicBrainz 没有 → 已改用搜索引擎 ✅");
+          window.open("https://www.bing.com/search?q=" +
+            encodeURIComponent(`site:open.spotify.com ${t2.name || ""} ${t2.artist || ""}`), "_blank");
+          return;
+        }
         const first = d.links[0];
         // 可视化：把 Spotify ID 写进这一行并重绘 ✅（同时复制 ✅）
         const row = lastResults[Number(spm.dataset.spmb)];
