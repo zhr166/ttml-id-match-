@@ -286,33 +286,20 @@ $("list").addEventListener("click", (e) => {
     toast("已打开搜索：site:open.spotify.com " + t.name + " " + t.artist);
   }
   if (spm) {
-    // MusicBrainz（免密钥 ✅）：查该录音的 streaming 链接里有没有 Spotify ✅
+    // 由**服务器**代查 MusicBrainz（浏览器不能带合规 UA，会 403 ❌）✅
     const t = lastResults[Number(spm.dataset.spmb)];
-    const mb = (q) => fetch("https://musicbrainz.org/ws/2/recording/?query=" + encodeURIComponent(q) +
-      "&fmt=json&limit=3", { headers: { Accept: "application/json" } }).then((r) => r.json());
-    const rel = (id) => fetch("https://musicbrainz.org/ws/2/recording/" + id + "?inc=url-rels&fmt=json",
-      { headers: { Accept: "application/json" } }).then((r) => r.json());
     toast("正在查 MusicBrainz…");
-    mb(`recording:"${t.name}" AND artist:"${t.artist}"`)
+    fetch(apiBase() + "/api/spotify-link?" + new URLSearchParams({ name: t.name, artist: t.artist }))
+      .then((r) => r.json())
       .then((d) => {
-        const rs = d.recordings || [];
-        if (!rs.length) throw new Error("MusicBrainz 没有命中");
-        return Promise.all(rs.slice(0, 3).map((r) => rel(r.id).catch(() => null)));
+        if (d.error) { toast("查询出错：" + d.error); return; }
+        if (!d.count) { toast("MusicBrainz 没找到 Spotify 链接 → 请用「查 Spotify」"); return; }
+        const first = d.links[0];
+        navigator.clipboard.writeText(first.url)
+          .then(() => toast("已复制 Spotify：" + first.id), () => toast(first.url));
+        window.open(first.url, "_blank");
       })
-      .then((list) => {
-        for (const d of list) {
-          for (const r of ((d && d.relations) || [])) {
-            const u = (r.url || {}).resource || "";
-            if (u.includes("open.spotify.com")) {
-              navigator.clipboard.writeText(u).then(() => toast("已复制 Spotify 链接：" + u), () => toast(u));
-              window.open(u, "_blank");
-              return;
-            }
-          }
-        }
-        toast("MusicBrainz 没找到 Spotify 链接 → 请用「查 Spotify」");
-      })
-      .catch((err) => toast("MusicBrainz 查询失败：" + err.message + " → 请用「查 Spotify」"));
+      .catch((err) => toast("查询失败：" + err.message + " → 请用「查 Spotify」"));
   }
 });
 
