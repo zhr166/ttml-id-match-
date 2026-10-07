@@ -406,7 +406,8 @@ $("spResult").addEventListener("click", (e) => {
    （iTunes 那个旧接口对 CN 基本返回空 ❌，现在会自动走 amp-api ✅）*/
 const REGIONS = ["TW","HK","JP","KR","CN","US","CA","GB","SG","MY","DE","FR","AU","RU",
                  "IN","ID","PH","TR","BR","VN","KH","TH","EG","ZA"];
-const DEFAULT_ON = ["TW","HK","JP","KR","US","CA"];
+// 默认只勾选 CA ✅（其余地区由使用者自行勾选 ✅）
+const DEFAULT_ON = ["CA"];
 const API_PORT = 8765;
 const $ = (id) => document.getElementById(id);
 let lastResults = [];
