@@ -288,7 +288,7 @@
     const REG = { zh: "地区：", "zh-TW": "地區：", en: "Regions:",
                   ja: "リージョン：", ko: "지역:", ru: "Регионы:" };
     const paintRegionLabel = () => {
-      const rb = $("regionsBox");
+      const rb = $("regions") || $("regionsBox");
       const sp = rb && rb.querySelector("span");
       if (sp) sp.textContent = REG[lang] || REG.zh;
     };
@@ -345,6 +345,8 @@
     apply(sel.value);
     // 重绘结果列表 ✅ 让每行的 9 个按钮文案也跟着语言变 ✅
     if (typeof render === "function") { try { render(); } catch (e) {} }
+    // 重绘 Spotify 状态行 ✅
+    if (window.__spRender) { try { window.__spRender(); } catch (e) {} }
   });
 })();
 </script>
@@ -410,7 +412,7 @@ const $ = (id) => document.getElementById(id);
 let lastResults = [];
 
 const regionsBox = $("regions");
-regionsBox.innerHTML = "<span>地区：</span>" + REGIONS.map((c) =>
+regionsBox.innerHTML = "<span>" + (window.__T ? window.__T("region") : "地区：") + "</span>" + REGIONS.map((c) =>
   `<label><input type="checkbox" value="${c}" ${DEFAULT_ON.includes(c) ? "checked" : ""}/> ${c}</label>`
 ).join("");
 const pickedRegions = () => [...regionsBox.querySelectorAll("input:checked")].map((i) => i.value);
@@ -557,7 +559,56 @@ $("list").addEventListener("click", (e) => {
 });
 
 /* 启动时探测 Spotify 是否已配置 ✅ */
+const SP_TXT = {
+  zh: { ok: "Spotify：已授权 ✅（可搜任意地区）", can: "Spotify：可登录 ✅（点右边按钮授权）",
+        non: "Spotify：未配置（在 .env 填 SPOTIFY_CLIENT_ID 后重启）", out: "退出 Spotify",
+        spo: "Spotify（未配置）", adspo: "Apple + Spotify（未配置）" },
+  "zh-TW": { ok: "Spotify：已授權 ✅（可搜尋任意地區）", can: "Spotify：可登入 ✅（點右邊按鈕授權）",
+        non: "Spotify：未設定（在 .env 填 SPOTIFY_CLIENT_ID 後重啟）", out: "登出 Spotify",
+        spo: "Spotify（未設定）", adspo: "Apple + Spotify（未設定）" },
+  en: { ok: "Spotify: signed in ✅ (any region)", can: "Spotify: ready to sign in ✅ (button on the right)",
+        non: "Spotify: not configured (set SPOTIFY_CLIENT_ID in .env and restart)", out: "Sign out of Spotify",
+        spo: "Spotify (not configured)", adspo: "Apple + Spotify (not configured)" },
+  ja: { ok: "Spotify：認証済み ✅（全地域を検索可）", can: "Spotify：ログイン可能 ✅（右のボタンで認証）",
+        non: "Spotify：未設定（.env に SPOTIFY_CLIENT_ID を記入して再起動）", out: "Spotify からログアウト",
+        spo: "Spotify（未設定）", adspo: "Apple + Spotify（未設定）" },
+  ko: { ok: "Spotify: 인증됨 ✅ (모든 지역 검색 가능)", can: "Spotify: 로그인 가능 ✅ (오른쪽 버튼으로 인증)",
+        non: "Spotify: 미설정 (.env에 SPOTIFY_CLIENT_ID 입력 후 재시작)", out: "Spotify 로그아웃",
+        spo: "Spotify (미설정)", adspo: "Apple + Spotify (미설정)" },
+  ru: { ok: "Spotify: вход выполнен ✅ (любой регион)", can: "Spotify: можно войти ✅ (кнопка справа)",
+        non: "Spotify: не настроено (укажите SPOTIFY_CLIENT_ID в .env и перезапустите)", out: "Выйти из Spotify",
+        spo: "Spotify (не настроено)", adspo: "Apple + Spotify (не настроено)" },
+};
+const spTxt = () => SP_TXT[localStorage.getItem("mm-lang") || "zh"] || SP_TXT.zh;
+let lastSpotifyStatus = null;
+
+function renderSpotifyStatus(s) {
+  if (s) lastSpotifyStatus = s;
+  const st = $("spState");
+  if (!st) return;
+  const T2 = spTxt();
+  const cur = lastSpotifyStatus || {};
+  if (cur.spotify_logged_in) {
+    st.textContent = T2.ok;
+    $("spLogin").textContent = T2.out;
+    $("spLogin").dataset.mode = "logout";
+  } else if (cur.spotify_client_id) {
+    st.textContent = T2.can;
+  } else {
+    st.textContent = T2.non;
+    const opt = $("source").querySelector('option[value="spotify"]');
+    const opt2 = $("source").querySelector('option[value="apple,spotify"]');
+    if (opt) opt.textContent = T2.spo;
+    if (opt2) opt2.textContent = T2.adspo;
+  }
+}
+window.__spRender = renderSpotifyStatus;
+
 fetch(apiBase() + "/api/status").then((r) => r.json()).then((s) => {
+  renderSpotifyStatus(s);
+}).catch(() => {});
+
+function _unusedOldStatusBlock(s) {
   const state = $("spState");
   if (s.spotify_logged_in) {
     state.textContent = "Spotify：已授权 ✅（可搜任意地区）";
@@ -572,7 +623,7 @@ fetch(apiBase() + "/api/status").then((r) => r.json()).then((s) => {
     if (opt) opt.textContent = "Spotify（未配置）";
     if (opt2) opt2.textContent = "Apple + Spotify（未配置）";
   }
-}).catch(() => {});
+}
 
 /* 登录 / 退出 Spotify ✅（PKCE ✅） */
 $("spLogin").addEventListener("click", async () => {
