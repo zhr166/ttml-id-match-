@@ -262,6 +262,74 @@ def deezer_search(term: str, market: str, limit: int) -> list[dict]:
     return out
 
 
+QQ_SEARCH = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp"   # ✅ 免密钥
+NETEASE_SEARCH = "https://music.163.com/api/search/get/web"       # ✅ 免密钥
+
+
+def qq_search(term: str, market: str, limit: int) -> list[dict]:
+    """QQ音乐（免密钥 ✅）—— songmid = QQ 歌曲 ID ✅，albummid = 专辑 ID ✅。"""
+    params = urllib.parse.urlencode({
+        "w": term, "format": "json", "p": 1, "n": max(1, min(limit, 20)),
+        "aggr": 1, "cr": 1, "new_json": 1, "inCharset": "utf8", "outCharset": "utf-8",
+    })
+    data = _get_json(f"{QQ_SEARCH}?{params}", headers={"Referer": "https://y.qq.com/"})
+    out = []
+    for s in ((((data.get("data") or {}).get("song") or {}).get("list")) or []):
+        al = s.get("album") or {}
+        mid = s.get("mid") or s.get("songmid") or ""
+        out.append({
+            "source": "qq",
+            "name": s.get("title") or s.get("songname") or "",
+            "artist": "/".join(x.get("name", "") for x in (s.get("singer") or [])),
+            "album": al.get("name") or "",
+            "duration_ms": int(s.get("interval") or 0) * 1000,
+            "track_id": mid,
+            "album_id": al.get("mid") or "",
+            "isrc": "",
+            "genre": "",
+            "release_date": (s.get("time_public") or "")[:10],
+            "artwork": "",
+            "url": f"https://y.qq.com/n/ryqq/songDetail/{mid}",
+            "countries": [market] if market else [],
+        })
+    return out
+
+
+def netease_search(term: str, market: str, limit: int) -> list[dict]:
+    """网易云音乐（免密钥 ✅）—— 歌曲 id ✅ + 专辑 album.id ✅。"""
+    params = urllib.parse.urlencode({"s": term, "type": 1, "limit": max(1, min(limit, 20)), "offset": 0})
+    data = _get_json(
+        f"{NETEASE_SEARCH}?{params}",
+        headers={"Referer": "https://music.163.com/", "Cookie": "appver=2.0.2"},
+    )
+    songs = ((data.get("result") or {}).get("songs")) or []
+    # 网易云会把翻唱排前面 ⚠️ → 按热度降序，尽量让原唱靠前 ✅
+    try:
+        songs.sort(key=lambda s: (s.get("popularity") or 0), reverse=True)
+    except Exception:
+        pass
+    out = []
+    for s in songs:
+        al = s.get("album") or {}
+        sid = str(s.get("id") or "")
+        out.append({
+            "source": "netease",
+            "name": s.get("name") or "",
+            "artist": "/".join(a.get("name", "") for a in (s.get("artists") or [])),
+            "album": al.get("name") or "",
+            "duration_ms": int(s.get("duration") or 0),
+            "track_id": sid,
+            "album_id": str(al.get("id") or ""),
+            "isrc": "",
+            "genre": "",
+            "release_date": "",
+            "artwork": al.get("picUrl") or "",
+            "url": f"https://music.163.com/#/song?id={sid}",
+            "countries": [market] if market else [],
+        })
+    return out
+
+
 def musicbrainz_search(term: str, market: str, limit: int) -> list[dict]:
     """MusicBrainz 公开接口 ✅（**无需密钥** ✅）。
     要求：User-Agent 带联系方式 ✅ + 限速 1 req/s ✅（这里每个地区只请求一次，天然满足 ✅）。
@@ -423,6 +491,12 @@ def merge_search(term: str, sources: list[str], countries: list[str], limit: int
                 elif source == "musicbrainz":
                     # MusicBrainz 也无地区概念 → 只搜一次 ✅（并遵守 1 req/s ✅）
                     found = musicbrainz_search(term, country, limit) if country == countries[0] else []
+                elif source == "qq":
+                    # QQ音乐：无地区概念 → 只搜一次 ✅（带 songmid + albummid ✅）
+                    found = qq_search(term, country, limit) if country == countries[0] else []
+                elif source == "netease":
+                    # 网易云：无地区概念 → 只搜一次 ✅（带歌曲 id + 专辑 id ✅）
+                    found = netease_search(term, country, limit) if country == countries[0] else []
                 elif source == "spotify" and token:
                     found = spotify_search(term, country, limit, token)
                 else:
