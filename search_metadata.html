@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>音乐元数据搜索（Apple Music + Spotify · 多地区）</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1e2230;--line:#2a3040;--fg:#e8eaf0;--dim:#98a2b8;--accent:#4f8cff;--ok:#39d98a;--sp:#1db954}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
+  header{padding:16px 22px 8px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:17px;font-weight:650}
+  .sub{color:var(--dim);font-size:12px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+  input[type=text]{flex:1 1 300px;min-width:200px;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);outline:none}
+  input[type=text]:focus{border-color:var(--accent)}
+  select,button{padding:9px 11px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  .row2{display:flex;flex-wrap:wrap;gap:14px;padding:9px 22px;border-bottom:1px solid var(--line);color:var(--dim);font-size:12px;align-items:center}
+  .row2 label{display:flex;gap:4px;align-items:center;color:var(--fg);cursor:pointer}
+  .srcpill{padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--line)}
+  .srcpill.apple{color:#c8d4ff}
+  .srcpill.spotify{color:var(--sp);border-color:#1c3a28}
+  .srcpill.deezer{color:#ffb84d;border-color:#3a2a12}
+  .srcpill.musicbrainz{color:#c58cff;border-color:#33224a}
+  main{padding:14px 22px 44px}
+  .status{color:var(--dim);font-size:12px;margin:4px 0 12px;white-space:pre-wrap}
+  .list{display:flex;flex-direction:column;gap:8px}
+  .row{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  .row:hover{border-color:var(--accent)}
+  .row img{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--panel2)}
+  .t{font-weight:600;font-size:14px}
+  .a{color:var(--dim);font-size:12.5px;margin-top:2px}
+  .meta{color:var(--dim);font-size:12px;margin-top:3px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-size:11px}
+  .chip.ok{color:var(--ok);border-color:#245}
+  .acts{display:flex;gap:6px;flex-direction:column}
+  .acts button{padding:6px 10px;font-size:12px}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ok);color:#06210f;padding:8px 16px;border-radius:999px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .empty{color:var(--dim);padding:26px 0;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>音乐元数据搜索</h1>
+  <div class="sub">Apple Music / iTunes（无需密钥）+ Spotify（可选）· 多地区 · 全部请求在你本机发出</div>
+</header>
+
+<div class="bar">
+  <input id="q" type="text" placeholder="歌名 / 艺人，例如：周杰伦 晴天 / hoyomix" autocomplete="off" />
+  <select id="source">
+    <option value="apple" selected>Apple Music</option>
+    <option value="deezer">Deezer（免费 · 带 ISRC）</option>
+    <option value="musicbrainz">MusicBrainz（免费）</option>
+    <option value="apple,deezer">Apple + Deezer ★</option>
+    <option value="apple,deezer,musicbrainz">Apple + Deezer + MusicBrainz ★★</option>
+    <option value="spotify">Spotify</option>
+    <option value="apple,spotify">Apple + Spotify</option>
+    <option value="apple,deezer,musicbrainz,spotify">全部四个源</option>
+  </select>
+  <select id="limit">
+    <option value="5">每区 5 条</option>
+    <option value="10" selected>每区 10 条</option>
+    <option value="25">每区 25 条</option>
+    <option value="50">每区 50 条</option>
+  </select>
+  <button class="primary" id="go">搜索</button>
+  <button id="json">导出 JSON</button>
+  <button id="spLogin" title="授权后可用你的账号搜索 Spotify 任意地区（PKCE，无需 secret）">登录 Spotify</button>
+  <span id="spState" style="color:#98a2b8;font-size:12px"></span>
+</div>
+
+<div class="row2" id="regions"></div>
+
+<main>
+  <div class="status" id="status">输入关键词后按 Enter 或点「搜索」。</div>
+  <div class="list" id="list"></div>
+</main>
+
+<div class="toast" id="toast">已复制</div>
+
+<!-- ══════════ Spotify 多地区查询（ISRC 跨区 / Track Relinking ✅）══════════ -->
+<section style="margin:18px 22px 40px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px 16px">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <b style="font-size:15px">Spotify 多地区查询</b>
+    <span style="color:var(--dim);font-size:12px">用 ISRC 跨区找各区 ID（最准）· 或按 Track ID 查可播性（Track Relinking）· 需要 Spotify 凭据</span>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+    <input id="spInput" type="text" placeholder="ISRC（如 TWK970300503）或 Spotify Track ID（如 3n3Pam7vgaVa1iaRUc9Lp）" style="flex:1 1 360px;min-width:240px;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg)" />
+    <select id="spMode">
+      <option value="isrc" selected>按 ISRC 跨区</option>
+      <option value="id">按 Track ID（查可播性）</option>
+      <option value="query">按关键词</option>
+    </select>
+    <button class="primary" id="spGo">查询各地区</button>
+  </div>
+  <div id="spStatus" style="color:var(--dim);font-size:12px;margin-top:8px">地区沿用上面勾选的地区 ✅</div>
+  <div id="spResult" style="margin-top:10px"></div>
+</section>
+
+<script>
+/* ---- Spotify 多地区查询 ✅（走 /api/spotify-markets ✅）---- */
+$("spGo").addEventListener("click", async () => {
+  const val = $("spInput").value.trim();
+  const mode = $("spMode").value;
+  const regions = pickedRegions();
+  if (!val) { $("spStatus").textContent = "请先填 ISRC / Track ID / 关键词 ✅"; return; }
+  if (!regions.length) { $("spStatus").textContent = "请在上面至少勾一个地区 ✅"; return; }
+  $("spGo").disabled = true;
+  $("spStatus").textContent = `查询中…（${regions.join(", ")}）`;
+  $("spResult").innerHTML = "";
+  try {
+    const qs = new URLSearchParams({ markets: regions.join(",") });
+    qs.set(mode, val);
+    const res = await fetch(apiBase() + "/api/spotify-markets?" + qs.toString());
+    const data = await res.json();
+    if (data.error) { $("spStatus").textContent = "失败：" + data.error; $("spGo").disabled = false; return; }
+    const rows = data.results || [];
+    $("spStatus").textContent = `共 ${rows.length} 个地区 · 可播 ${(data.available || []).length} 个：${(data.available || []).join(",") || "（无）"}`;
+    $("spResult").innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead><tr style="color:var(--dim);text-align:left">
+        <th style="padding:4px 6px">区</th><th style="padding:4px 6px">可播</th>
+        <th style="padding:4px 6px">该区 ID</th><th style="padding:4px 6px">ISRC</th>
+        <th style="padding:4px 6px">重定向</th><th style="padding:4px 6px">曲名 — 艺人</th>
+        <th style="padding:4px 6px"></th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr style="border-top:1px solid var(--line)">
+        <td style="padding:4px 6px">${r.market || ""}</td>
+        <td style="padding:4px 6px">${r.available ? "✅" : "❌"}</td>
+        <td style="padding:4px 6px">${esc(r.id || "-")}</td>
+        <td style="padding:4px 6px">${esc(r.isrc || "-")}</td>
+        <td style="padding:4px 6px">${esc(r.linked_from || (r.is_relinked ? "是" : ""))}</td>
+        <td style="padding:4px 6px">${esc(r.name || "")}${r.artists ? " — " + esc(r.artists) : ""}</td>
+        <td style="padding:4px 6px">${r.id ? `<button data-spcopy="${i}" style="padding:3px 8px;font-size:11.5px">复制 ID</button>` : ""}</td>
+      </tr>`).join("")}</tbody></table>`;
+    $("spResult").dataset.rows = JSON.stringify(rows);
+  } catch (e) {
+    $("spStatus").textContent = "失败：" + e.message + "（确认是通过 exe / serve_search.py 打开的页面 ✅）";
+  }
+  $("spGo").disabled = false;
+});
+$("spResult").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-spcopy]");
+  if (!b) return;
+  const rows = JSON.parse($("spResult").dataset.rows || "[]");
+  const r = rows[Number(b.dataset.spcopy)];
+  if (r && r.id) navigator.clipboard.writeText(r.id).then(() => toast("已复制 " + r.id), () => toast("复制失败"));
+});
+</script>
+
+<script>
+/* 地区 ✅
+   CN（中国大陆）已加回 —— Apple 搜索已改用 amp-api ✅，CN 目录能搜到 ✅
+   （iTunes 那个旧接口对 CN 基本返回空 ❌，现在会自动走 amp-api ✅）*/
+const REGIONS = ["TW","HK","JP","KR","US","CA","GB","SG","MY","DE","FR","AU","CN"];
+const DEFAULT_ON = ["TW","HK","JP","KR","US","CA"];
+const API_PORT = 8765;
+const $ = (id) => document.getElementById(id);
+let lastResults = [];
+
+const regionsBox = $("regions");
+regionsBox.innerHTML = "<span>地区：</span>" + REGIONS.map((c) =>
+  `<label><input type="checkbox" value="${c}" ${DEFAULT_ON.includes(c) ? "checked" : ""}/> ${c}</label>`
+).join("");
+const pickedRegions = () => [...regionsBox.querySelectorAll("input:checked")].map((i) => i.value);
+const apiBase = () => (location.protocol === "file:" ? `http://127.0.0.1:${API_PORT}` : "");
+
+async function run() {
+  const term = $("q").value.trim();
+  const regions = pickedRegions();
+  const limit = Number($("limit").value);
+  const sources = $("source").value;
+  if (!term) { $("status").textContent = "请先输入关键词。"; return; }
+  if (!regions.length) { $("status").textContent = "请至少选一个地区。"; return; }
+
+  $("go").disabled = true;
+  $("status").textContent = `搜索中… ${sources.replace(",", " + ")} · ${regions.join(", ")}`;
+  $("list").innerHTML = "";
+
+  try {
+    const url = apiBase() + "/api/search?" + new URLSearchParams({
+      term, countries: regions.join(","), limit: String(limit), sources,
+    });
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    lastResults = data.results || [];
+    let msg = `共 ${data.count ?? lastResults.length} 条（已跨区合并）`;
+    if (data.failed && data.failed.length) msg += `\n失败：${data.failed.join(", ")}`;
+    if (data.warnings && data.warnings.length) msg += `\n提示：${data.warnings.join("；")}`;
+    $("status").textContent = msg;
+  } catch (e) {
+    lastResults = [];
+    $("status").textContent = "搜索失败：" + e.message +
+      "\n请确认已运行 `python serve_search.py`（或双击 启动搜索.bat ✅），并从它打开的页面操作 ✅";
+  }
+  render();
+  $("go").disabled = false;
+}
+
+const fmtDur = (ms) => { if (!ms) return "-"; const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function render() {
+  const list = $("list");
+  if (!lastResults.length) { list.innerHTML = '<div class="empty">没有结果</div>'; return; }
+  list.innerHTML = lastResults.map((t, i) => `
+    <div class="row">
+      <img src="${t.artwork || ""}" alt="" loading="lazy" />
+      <div>
+        <div class="t">${esc(t.name)} ${(t.countries || []).map((c) => `<span class="chip">${c}</span>`).join(" ")}
+          <span class="srcpill ${t.source}">${t.source === "spotify" ? "Spotify" : t.source === "deezer" ? "Deezer" : t.source === "musicbrainz" ? "MusicBrainz" : "Apple"}</span></div>
+        <div class="a">${esc(t.artist)} — ${esc(t.album)}</div>
+        <div class="meta">
+          <span>${fmtDur(t.duration_ms)}</span>
+          ${t.genre ? `<span>${esc(t.genre)}</span>` : ""}
+          <span>${esc(t.release_date || "")}</span>
+          <span class="chip ok">${t.source === "spotify" ? "Track " : "Apple ID "}${esc(t.track_id)}</span>
+          ${t.isrc ? `<span class="chip ok">ISRC ${esc(t.isrc)}</span>` : ""}
+        </div>
+      </div>
+      <div class="acts">
+        <button data-copy="${i}">复制 ID</button>
+        <button data-copyname="${i}">复制歌名</button>
+        ${t.isrc ? `<button data-copyisrc="${i}">复制 ISRC</button>` : ""}
+        <button data-copyalbum="${i}">复制专辑</button>
+        <button data-copyline="${i}">复制整行</button>
+        <button data-open="${i}">打开</button>
+      </div>
+    </div>`).join("");
+}
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1500); }
+
+$("go").addEventListener("click", run);
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+
+$("json").addEventListener("click", () => {
+  if (!lastResults.length) return toast("没有结果");
+  const blob = new Blob([JSON.stringify(lastResults, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "music-metadata.json";
+  a.click();
+  toast("已导出 JSON");
+});
+
+$("list").addEventListener("click", (e) => {
+  const c = e.target.closest("[data-copy]");
+  const cn = e.target.closest("[data-copyname]");
+  const ci = e.target.closest("[data-copyisrc]");
+  const ca = e.target.closest("[data-copyalbum]");
+  const cl = e.target.closest("[data-copyline]");
+  const o = e.target.closest("[data-open]");
+  const put = (text, label) =>
+    navigator.clipboard.writeText(String(text ?? "")).then(() => toast("已复制" + (label ? "：" + label : "")), () => toast("复制失败"));
+  if (c) { const t = lastResults[Number(c.dataset.copy)]; put(t.track_id, t.track_id); }
+  if (cn) { const t = lastResults[Number(cn.dataset.copyname)]; put(t.name, t.name); }
+  if (ci) { const t = lastResults[Number(ci.dataset.copyisrc)]; put(t.isrc, t.isrc); }
+  if (ca) { const t = lastResults[Number(ca.dataset.copyalbum)]; put(t.album, t.album); }
+  if (cl) {
+    const t = lastResults[Number(cl.dataset.copyline)];
+    put([t.name, t.artist, t.album, t.isrc, t.track_id].filter(Boolean).join(" | "), "整行");
+  }
+  if (o) { const t = lastResults[Number(o.dataset.open)]; if (t.url) window.open(t.url, "_blank"); }
+});
+
+/* 启动时探测 Spotify 是否已配置 ✅ */
+fetch(apiBase() + "/api/status").then((r) => r.json()).then((s) => {
+  const state = $("spState");
+  if (s.spotify_logged_in) {
+    state.textContent = "Spotify：已授权 ✅（可搜任意地区）";
+    $("spLogin").textContent = "退出 Spotify";
+    $("spLogin").dataset.mode = "logout";
+  } else if (s.spotify_client_id) {
+    state.textContent = "Spotify：可登录 ✅（点右边按钮授权）";
+  } else {
+    state.textContent = "Spotify：未配置（在 .env 填 SPOTIFY_CLIENT_ID 后重启）";
+    const opt = $("source").querySelector('option[value="spotify"]');
+    const opt2 = $("source").querySelector('option[value="apple,spotify"]');
+    if (opt) opt.textContent = "Spotify（未配置）";
+    if (opt2) opt2.textContent = "Apple + Spotify（未配置）";
+  }
+}).catch(() => {});
+
+/* 登录 / 退出 Spotify ✅（PKCE ✅） */
+$("spLogin").addEventListener("click", async () => {
+  if ($("spLogin").dataset.mode === "logout") {
+    await fetch(apiBase() + "/api/spotify/logout").catch(() => {});
+    location.reload();
+    return;
+  }
+  const url = apiBase() + "/api/spotify/login";
+  try {
+    const r = await fetch(url, { redirect: "manual" });
+    // 后端返回 302 → 浏览器不允许 fetch 跟随跨域跳转，这里直接用地址栏跳转 ✅
+    window.location.href = url;
+  } catch {
+    window.location.href = url;
+  }
+});
+</script>
+</body>
+</html>
