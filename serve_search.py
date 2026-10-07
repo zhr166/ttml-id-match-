@@ -493,42 +493,50 @@ def merge_search(term: str, sources: list[str], countries: list[str], limit: int
             warnings.append("Spotify 未配置凭据（SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET）→ 已跳过")
             sources = [s for s in sources if s != "spotify"]
 
-    for country in countries:
-        for source in sources:
-            try:
-                if source == "apple":
-                    found = apple_search(term, country, limit)
-                elif source == "deezer":
-                    # Deezer 无地区概念 → 只搜一次（第一轮）✅，结果带 ISRC ✅
-                    found = deezer_search(term, country, limit) if country == countries[0] else []
-                elif source == "musicbrainz":
-                    # MusicBrainz 也无地区概念 → 只搜一次 ✅（并遵守 1 req/s ✅）
-                    found = musicbrainz_search(term, country, limit) if country == countries[0] else []
-                elif source == "qq":
-                    # QQ音乐：无地区概念 → 只搜一次 ✅（带 songmid + albummid ✅）
-                    found = qq_search(term, country, limit) if country == countries[0] else []
-                elif source == "netease":
-                    # 网易云：无地区概念 → 只搜一次 ✅（带歌曲 id + 专辑 id ✅）
-                    found = netease_search(term, country, limit) if country == countries[0] else []
-                elif source == "spotify" and token:
-                    found = spotify_search(term, country, limit, token)
-                else:
-                    continue
-            except Exception as exc:
-                failed.append(f"{source}/{country}")
-                warnings.append(f"{source}/{country} 失败：{exc}")
+    # ★★ 并行抓取（原来是串行，5 个源一个一个来 → 很慢 ❌）
+    #     现在所有 (地区 × 数据源) 同时发请求 ✅ → 总耗时 ≈ 最慢的那个 ✅
+    import concurrent.futures as _cf
+
+    tasks: list[tuple[str, str]] = [(c, s) for c in countries for s in sources]
+
+    def _fetch(task: tuple[str, str]):
+        country, source = task
+        try:
+            if source == "apple":
+                return apple_search(term, country, limit)
+            if source == "deezer":
+                return deezer_search(term, country, limit) if country == countries[0] else []
+            if source == "musicbrainz":
+                return musicbrainz_search(term, country, limit) if country == countries[0] else []
+            if source == "qq":
+                return qq_search(term, country, limit) if country == countries[0] else []
+            if source == "netease":
+                return netease_search(term, country, limit) if country == countries[0] else []
+            if source == "spotify" and token:
+                return spotify_search(term, country, limit, token)
+            return []
+        except Exception as exc:                     # 单个源失败不影响其它源 ✅
+            return ("__error__", f"{source}/{country} 失败：{exc}")
+
+    with _cf.ThreadPoolExecutor(max_workers=8) as _pool:
+        fetched = list(_pool.map(_fetch, tasks))
+
+    for (country, source), found in zip(tasks, fetched):
+        if isinstance(found, tuple) and found and found[0] == "__error__":
+            failed.append(f"{source}/{country}")
+            warnings.append(found[1])
+            continue
+        for t in found:
+            key = f"{t['source']}|{t['name'].strip().lower()}|{t['album'].strip().lower()}"
+            if key.endswith("|"):
                 continue
-            for t in found:
-                key = f"{t['source']}|{t['name'].strip().lower()}|{t['album'].strip().lower()}"
-                if key.endswith("|"):
-                    continue
-                if key in merged:
-                    if country not in merged[key]["countries"]:
-                        merged[key]["countries"].append(country)
-                    if not merged[key].get("isrc") and t.get("isrc"):
-                        merged[key]["isrc"] = t["isrc"]
-                else:
-                    merged[key] = t
+            if key in merged:
+                if country not in merged[key]["countries"]:
+                    merged[key]["countries"].append(country)
+                if not merged[key].get("isrc") and t.get("isrc"):
+                    merged[key]["isrc"] = t["isrc"]
+            else:
+                merged[key] = t
 
     # ★ APPLE_ISRC_ENRICH：给 Apple 结果补官方 ISRC ✅（最多 8 条，避免拖慢 ✅）
     if "apple" in sources:
