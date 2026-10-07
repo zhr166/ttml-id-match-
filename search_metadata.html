@@ -193,8 +193,32 @@
           go: "Поиск", json: "Экспорт JSON", login: "Войти в Spotify", region: "Регионы:", theme: ["🌙 Тёмная", "☀️ Светлая"] },
   };
   // 元素已在 HTML 里（#settingsTag / #themeBtn / #langSel）✅ —— 这里只做绑定 ✅
+  const T = (k) => ((window.__L && window.__L[window.__lang || "zh"]) || L.zh)[k] || k;
+  window.__T = T;
+  window.__lang = localStorage.getItem("mm-lang") || "zh";
+  // 复制/操作按钮的文案 ✅（每行 9 个按钮都跟着语言走 ✅）
+  Object.assign(L.zh, { copyId: "复制 ID", copyName: "复制歌名", copyIsrc: "复制 ISRC",
+    copyAlbum: "复制专辑", copyAlbumId: "复制专辑ID", copyLine: "复制整行",
+    spSearch: "查 Spotify", spMb: "查 Spotify(MB)", open: "打开", empty: "没有结果", count: "共" });
+  Object.assign(L["zh-TW"], { copyId: "複製 ID", copyName: "複製歌名", copyIsrc: "複製 ISRC",
+    copyAlbum: "複製專輯", copyAlbumId: "複製專輯ID", copyLine: "複製整行",
+    spSearch: "查 Spotify", spMb: "查 Spotify(MB)", open: "開啟", empty: "沒有結果", count: "共" });
+  Object.assign(L.en, { copyId: "Copy ID", copyName: "Copy title", copyIsrc: "Copy ISRC",
+    copyAlbum: "Copy album", copyAlbumId: "Copy album ID", copyLine: "Copy row",
+    spSearch: "Find Spotify", spMb: "Find Spotify (MB)", open: "Open", empty: "No results", count: "Total" });
+  Object.assign(L.ja, { copyId: "ID コピー", copyName: "曲名コピー", copyIsrc: "ISRC コピー",
+    copyAlbum: "アルバムコピー", copyAlbumId: "アルバムID", copyLine: "行コピー",
+    spSearch: "Spotify 検索", spMb: "Spotify 検索(MB)", open: "開く", empty: "結果なし", count: "合計" });
+  Object.assign(L.ko, { copyId: "ID 복사", copyName: "곡명 복사", copyIsrc: "ISRC 복사",
+    copyAlbum: "앨범 복사", copyAlbumId: "앨범 ID 복사", copyLine: "행 복사",
+    spSearch: "Spotify 찾기", spMb: "Spotify 찾기(MB)", open: "열기", empty: "결과 없음", count: "총" });
+  Object.assign(L.ru, { copyId: "Копировать ID", copyName: "Копировать название", copyIsrc: "Копировать ISRC",
+    copyAlbum: "Копировать альбом", copyAlbumId: "Копировать ID альбома", copyLine: "Копировать строку",
+    spSearch: "Найти в Spotify", spMb: "Найти в Spotify (MB)", open: "Открыть", empty: "Нет результатов", count: "Всего" });
+  window.__L = L;
   const sel = $("langSel");
   if (!sel) return;
+  window.__lang = sel.value;
   // 主题变化时刷新按钮文案 ✅
   $("themeBtn").addEventListener("themechanged", () => apply(sel.value));
 
@@ -217,7 +241,10 @@
   apply(saved);
   sel.addEventListener("change", () => {
     localStorage.setItem("mm-lang", sel.value);
+    window.__lang = sel.value;
     apply(sel.value);
+    // 重绘结果列表 ✅ 让每行的 9 个按钮文案也跟着语言变 ✅
+    if (typeof render === "function") { try { render(); } catch (e) {} }
   });
 })();
 </script>
@@ -352,15 +379,15 @@ function render() {
         </div>
       </div>
       <div class="acts">
-        <button data-copy="${i}">复制 ID</button>
-        <button data-copyname="${i}">复制歌名</button>
-        ${t.isrc ? `<button data-copyisrc="${i}">复制 ISRC</button>` : ""}
-        <button data-copyalbum="${i}">复制专辑</button>
-        ${t.album_id ? `<button data-copyalbumid="${i}">复制专辑ID</button>` : ""}
-        <button data-copyline="${i}">复制整行</button>
-        <button data-spsearch="${i}">查 Spotify</button>
-        <button data-spmb="${i}">查 Spotify(MB)</button>
-        <button data-open="${i}">打开</button>
+        <button data-copy="${i}">${T("copyId")}</button>
+        <button data-copyname="${i}">${T("copyName")}</button>
+        ${t.isrc ? `<button data-copyisrc="${i}">${T("copyIsrc")}</button>` : ""}
+        <button data-copyalbum="${i}">${T("copyAlbum")}</button>
+        ${t.album_id ? `<button data-copyalbumid="${i}">${T("copyAlbumId")}</button>` : ""}
+        <button data-copyline="${i}">${T("copyLine")}</button>
+        <button data-spsearch="${i}">${T("spSearch")}</button>
+        <button data-spmb="${i}">${T("spMb")}</button>
+        <button data-open="${i}">${T("open")}</button>
       </div>
     </div>`).join("");
 }
