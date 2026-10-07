@@ -278,6 +278,35 @@
                  ja: "音楽メタデータ検索", ko: "음악 메타데이터 검색", ru: "Поиск метаданных музыки" };
     const h1 = document.querySelector("header h1");
     if (h1) h1.textContent = H1[lang] || H1.zh;
+
+    // ⚙️ 设置：标签 ✅
+    const SET = { zh: "⚙️ 设置：", "zh-TW": "⚙️ 設定：", en: "⚙️ Settings:",
+                  ja: "⚙️ 設定：", ko: "⚙️ 설정:", ru: "⚙️ Настройки:" };
+    if ($("settingsTag")) $("settingsTag").textContent = SET[lang] || SET.zh;
+
+    // 地区行「地区：」✅（整行重绘，避免时序问题）
+    const REG = { zh: "地区：", "zh-TW": "地區：", en: "Regions:",
+                  ja: "リージョン：", ko: "지역:", ru: "Регионы:" };
+    const paintRegionLabel = () => {
+      const rb = $("regionsBox");
+      const sp = rb && rb.querySelector("span");
+      if (sp) sp.textContent = REG[lang] || REG.zh;
+    };
+    paintRegionLabel();
+    setTimeout(paintRegionLabel, 200);
+    setTimeout(paintRegionLabel, 800);
+
+    // 初始提示文字 ✅（只在没有结果时替换，不覆盖搜索结果提示 ✅）
+    const HINT = {
+      zh: "输入关键词后按 Enter 或点「搜索」。",
+      "zh-TW": "輸入關鍵字後按 Enter 或點「搜尋」。",
+      en: "Type a keyword and press Enter or click Search.",
+      ja: "キーワードを入力して Enter か「検索」を押してください。",
+      ko: "키워드를 입력하고 Enter 또는 검색을 누르세요.",
+      ru: "Введите запрос и нажмите Enter или «Поиск».",
+    };
+    const st = $("status");
+    if (st && !window.__hasResults) st.textContent = HINT[lang] || HINT.zh;
     // 数据源下拉 ✅
     const ssrc = $("source");
     if (ssrc) {
