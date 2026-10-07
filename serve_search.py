@@ -674,6 +674,46 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._json({"error": str(exc)[:200]}, 500)
             return
+        if parsed.path == "/api/spotify-link":
+            # ✅ 浏览器不能改 UA，MusicBrainz 会 403 ❌ → 由服务器代查（带合规 UA ✅）
+            qs = urllib.parse.parse_qs(parsed.query)
+            name = (qs.get("name") or [""])[0].strip()
+            artist = (qs.get("artist") or [""])[0].strip()
+            if not name:
+                self._json({"error": "missing name"}, 400)
+                return
+            MB_UA = {"User-Agent": "MusicMetaSearch/1.1 ( https://github.com/zhr166/ttml-id-match- )"}
+            found: list[dict] = []
+            err = ""
+            try:
+                q = f'recording:"{name}"'
+                if artist:
+                    q += f' AND artist:"{artist}"'
+                url = "https://musicbrainz.org/ws/2/recording/?" + urllib.parse.urlencode(
+                    {"query": q, "fmt": "json", "limit": 3})
+                recs = _get_json(url, headers=MB_UA, timeout=30).get("recordings") or []
+                for r in recs:
+                    try:
+                        import time as _t
+                        _t.sleep(0.35)          # MusicBrainz 限速 1 req/s ✅
+                    except Exception:
+                        pass
+                    u2 = (f"https://musicbrainz.org/ws/2/recording/{r['id']}"
+                          "?inc=url-rels&fmt=json")
+                    rels = _get_json(u2, headers=MB_UA, timeout=30).get("relations") or []
+                    for rel in rels:
+                        res = ((rel.get("url") or {}).get("resource")) or ""
+                        if "open.spotify.com" in res:
+                            found.append({"title": r.get("title") or "",
+                                          "mbid": r.get("id") or "",
+                                          "url": res,
+                                          "id": res.rstrip("/").split("/")[-1].split("?")[0]})
+            except Exception as exc:
+                err = str(exc)[:120]
+            self._json({"name": name, "artist": artist, "count": len(found),
+                        "error": err, "links": found})
+            return
+
         if parsed.path == "/api/apple-isrc":
             qs = urllib.parse.parse_qs(parsed.query)
             sid = (qs.get("id") or [""])[0].strip()
