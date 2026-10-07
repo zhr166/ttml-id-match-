@@ -473,6 +473,13 @@ def merge_search(term: str, sources: list[str], countries: list[str], limit: int
     warnings: list[str] = []
     token = None
 
+    # ★ QQ音乐 / 网易云 / Deezer / MusicBrainz 跟地区无关 ✅
+    #   如果只选了这些源，**允许一个地区都不勾** ✅（用一个占位地区让循环跑起来 ✅）
+    regionless = {"qq", "netease", "deezer", "musicbrainz"}
+    if not countries and any(s in regionless for s in sources):
+        countries = ["--"]
+        warnings.append("未选地区：QQ音乐 / 网易云 / Deezer / MusicBrainz 无需地区 ✅")
+
     if "spotify" in sources:
         try:
             token = spotify_token()
