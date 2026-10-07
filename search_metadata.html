@@ -180,7 +180,12 @@ async function run() {
   const limit = Number($("limit").value);
   const sources = $("source").value;
   if (!term) { $("status").textContent = "请先输入关键词。"; return; }
-  if (!regions.length) { $("status").textContent = "请至少选一个地区。"; return; }
+  if (!regions.length) {
+    // QQ音乐 / 网易云 / Deezer / MusicBrainz 跟地区无关 ✅ → 只有选了"要地区"的源才强制勾地区 ✅
+    const regionless = ["qq", "netease", "deezer", "musicbrainz"];
+    const needsRegion = sources.split(",").some((s) => !regionless.includes(s.trim()));
+    if (needsRegion) { $("status").textContent = "请至少选一个地区（当前数据源需要地区）。"; return; }
+  }
 
   $("go").disabled = true;
   $("status").textContent = `搜索中… ${sources.replace(",", " + ")} · ${regions.join(", ")}`;
