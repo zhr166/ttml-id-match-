@@ -454,8 +454,17 @@ async function run() {
     $("status").textContent = msg;
   } catch (e) {
     lastResults = [];
-    $("status").textContent = "搜索失败：" + e.message +
-      "\n请确认已运行 `python serve_search.py`（或双击 启动搜索.bat ✅），并从它打开的页面操作 ✅";
+    // ★ 连不上本机服务（黑窗口关了 / 页面是 file:// 打开的 / 端口变了 ✅）
+    const HINT = {
+      zh: "❌ 连不上本机服务（Failed to fetch）\n① 「音乐元数据搜索.exe」的**黑窗口必须一直开着**（它就是服务器，关了就连不上 ✅）\n② 本页要用**它自动打开的那个** http://127.0.0.1:8765/ —— 不要直接双击 search_metadata.html\n③ 关过的话：重新双击 exe → 用新打开的页面（或刷新本页）✅",
+      "zh-TW": "❌ 連不上本機服務（Failed to fetch）\n① 「音乐元数据搜索.exe」的**黑視窗必須一直開著**\n② 本頁要用**它自動開啟的那個** http://127.0.0.1:8765/\n③ 關過的話：重新雙擊 exe → 用新開的頁面（或重新整理）✅",
+      en: "❌ Cannot reach the local server (Failed to fetch)\n① The **black console window** of 音乐元数据搜索.exe must stay OPEN (it is the server)\n② Use the page it opened: http://127.0.0.1:8765/ — do NOT open search_metadata.html directly\n③ If you closed it: start the exe again and use the new page (or reload this one)",
+      ja: "❌ ローカルサービスに接続できません（Failed to fetch）\n① 「音乐元数据搜索.exe」の**黒いウィンドウを開いたまま**にしてください（これがサーバーです）\n② 自動で開かれた http://127.0.0.1:8765/ を使ってください\n③ 閉じてしまったら exe を起動し直してください ✅",
+      ko: "❌ 로컬 서비스에 연결할 수 없습니다 (Failed to fetch)\n① 「音乐元数据搜索.exe」의 **검은 창을 계속 열어 두세요** (그것이 서버입니다)\n② 자동으로 열린 http://127.0.0.1:8765/ 를 사용하세요\n③ 닫았다면 exe를 다시 실행하세요 ✅",
+      ru: "❌ Не удаётся подключиться к локальному серверу (Failed to fetch)\n① **Чёрное окно** 音乐元数据搜索.exe должно оставаться ОТКРЫТЫМ (это сервер)\n② Используйте страницу http://127.0.0.1:8765/, которую он открыл сам\n③ Если закрыли — запустите exe заново ✅",
+    };
+    const lg = localStorage.getItem("mm-lang") || "zh";
+    $("status").textContent = (HINT[lg] || HINT.zh) + "\n[" + e.message + "]";
   }
   render();
   $("go").disabled = false;
