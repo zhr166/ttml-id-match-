@@ -459,7 +459,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 
 function render() {
   const list = $("list");
-  if (!lastResults.length) { list.innerHTML = '<div class="empty">没有结果</div>'; return; }
+  if (!lastResults.length) { list.innerHTML = `<div class="empty">${T("empty")}</div>`; return; }
   list.innerHTML = lastResults.map((t, i) => `
     <div class="row">
       <img src="${t.artwork || ""}" alt="" loading="lazy" />
