@@ -239,22 +239,23 @@
   window.__lang = localStorage.getItem("mm-lang") || "zh";
   // 复制/操作按钮的文案 ✅（每行 9 个按钮都跟着语言走 ✅）
   Object.assign(L.zh, { copyId: "复制 ID", copyName: "复制歌名", copyIsrc: "复制 ISRC",
-    copyAlbum: "复制专辑", copyAlbumId: "复制专辑ID", copyLine: "复制整行",
+    copyAlbum: "复制专辑", copyAlbumId: "复制专辑ID", copyLine: "复制整行", copyAmLink: "复制 AM 链接",
     spSearch: "查 Spotify", spMb: "查 Spotify(MB)", open: "打开", empty: "没有结果", count: "共" });
   Object.assign(L["zh-TW"], { copyId: "複製 ID", copyName: "複製歌名", copyIsrc: "複製 ISRC",
-    copyAlbum: "複製專輯", copyAlbumId: "複製專輯ID", copyLine: "複製整行",
+    copyAlbum: "複製專輯", copyAlbumId: "複製專輯ID", copyLine: "複製整行", copyAmLink: "複製 AM 連結",
     spSearch: "查 Spotify", spMb: "查 Spotify(MB)", open: "開啟", empty: "沒有結果", count: "共" });
   Object.assign(L.en, { copyId: "Copy ID", copyName: "Copy title", copyIsrc: "Copy ISRC",
-    copyAlbum: "Copy album", copyAlbumId: "Copy album ID", copyLine: "Copy row",
+    copyAlbum: "Copy album", copyAlbumId: "Copy album ID", copyLine: "Copy row", copyAmLink: "Copy AM link",
     spSearch: "Find Spotify", spMb: "Find Spotify (MB)", open: "Open", empty: "No results", count: "Total" });
   Object.assign(L.ja, { copyId: "ID コピー", copyName: "曲名コピー", copyIsrc: "ISRC コピー",
-    copyAlbum: "アルバムコピー", copyAlbumId: "アルバムID", copyLine: "行コピー",
+    copyAlbum: "アルバムコピー", copyAlbumId: "アルバムID", copyLine: "行コピー", copyAmLink: "AM リンクをコピー",
     spSearch: "Spotify 検索", spMb: "Spotify 検索(MB)", open: "開く", empty: "結果なし", count: "合計" });
   Object.assign(L.ko, { copyId: "ID 복사", copyName: "곡명 복사", copyIsrc: "ISRC 복사",
-    copyAlbum: "앨범 복사", copyAlbumId: "앨범 ID 복사", copyLine: "행 복사",
+    copyAlbum: "앨범 복사", copyAlbumId: "앨범 ID 복사", copyLine: "행 복사", copyAmLink: "AM 링크 복사",
     spSearch: "Spotify 찾기", spMb: "Spotify 찾기(MB)", open: "열기", empty: "결과 없음", count: "총" });
   Object.assign(L.ru, { copyId: "Копировать ID", copyName: "Копировать название", copyIsrc: "Копировать ISRC",
     copyAlbum: "Копировать альбом", copyAlbumId: "Копировать ID альбома", copyLine: "Копировать строку",
+    copyAmLink: "Копировать ссылку AM",
     spSearch: "Найти в Spotify", spMb: "Найти в Spotify (MB)", open: "Открыть", empty: "Нет результатов", count: "Всего" });
   window.__L = L;
   const sel = $("langSel");
@@ -501,6 +502,7 @@ function render() {
         <button data-copyalbum="${i}">${T("copyAlbum")}</button>
         ${t.album_id ? `<button data-copyalbumid="${i}">${T("copyAlbumId")}</button>` : ""}
         <button data-copyline="${i}">${T("copyLine")}</button>
+        ${t.source === "apple" ? `<button data-copyam="${i}">${T("copyAmLink")}</button>` : ""}
         <button data-spsearch="${i}">${T("spSearch")}</button>
         <button data-spmb="${i}">${T("spMb")}</button>
         <button data-open="${i}">${T("open")}</button>
@@ -530,6 +532,7 @@ $("list").addEventListener("click", (e) => {
   const ca = e.target.closest("[data-copyalbum]");
   const cai = e.target.closest("[data-copyalbumid]");
   const cl = e.target.closest("[data-copyline]");
+  const cam = e.target.closest("[data-copyam]");
   const o = e.target.closest("[data-open]");
   const sps = e.target.closest("[data-spsearch]");
   const spm = e.target.closest("[data-spmb]");
@@ -543,6 +546,15 @@ $("list").addEventListener("click", (e) => {
   if (cl) {
     const t = lastResults[Number(cl.dataset.copyline)];
     put([t.name, t.artist, t.album, t.isrc, t.track_id].filter(Boolean).join(" | "), "整行");
+  }
+  if (cam) {
+    // ★ Apple Music 单曲链接（含地区与 id ✅）
+    //   格式：https://beta.music.apple.com/<地区>/song/<歌名>/<id>
+    const t = lastResults[Number(cam.dataset.copyam)];
+    const sf = ((t.countries || []).find((c) => c && c !== "--") || "us").toLowerCase();
+    const slug = encodeURIComponent(String(t.name || "").replace(/\//g, "-"));
+    const link = `https://beta.music.apple.com/${sf}/song/${slug}/${t.track_id}`;
+    put(link, link);
   }
   if (o) { const t = lastResults[Number(o.dataset.open)]; if (t.url) window.open(t.url, "_blank"); }
   if (sps) {
