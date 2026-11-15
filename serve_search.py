@@ -831,6 +831,35 @@ def save_user_token(data: dict) -> None:
         pass
 
 
+def save_pasted_token(token: str) -> dict:
+    """保存用户从浏览器里复制的 Spotify **access token** ✅（免 PKCE 登录 ✅）
+
+    获取方法：登录 open.spotify.com → F12 Network → 任一 api.spotify.com 请求
+    → 请求头 `Authorization: Bearer xxx` → 复制 xxx ✅
+    有效期约 1 小时（access token 不能刷新），过期后重新复制即可 ✅
+    """
+    tok = (token or "").strip()
+    tok = tok.replace("Bearer", "").replace("bearer", "").strip()
+    if len(tok) < 40:
+        raise ValueError("token 看起来不完整（长度 < 40）✅ 请重新复制")
+    save_user_token({
+        "access_token": tok,
+        "expires_at": time.time() + 3000,   # 按约 50 分钟算 ✅
+        "refresh_token": "",
+        "pasted": True,
+        "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    return {"ok": True, "length": len(tok), "expires_hint": "约 50 分钟后失效，过期重新粘贴即可 ✅"}
+
+
+def pasted_token_status() -> dict:
+    data = load_user_token() or {}
+    if not data.get("pasted"):
+        return {"pasted": False}
+    left = int(data.get("expires_at", 0) - time.time())
+    return {"pasted": True, "minutes_left": max(0, left // 60)}
+
+
 def spotify_user_access_token() -> str | None:
     """拿用户 token（过期就刷新 ✅）；没有授权过返回 None ✅。"""
     cid, secret = spotify_credentials()
@@ -1018,7 +1047,15 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "spotify": bool(cid and secret),
                     "spotify_client_id": bool(cid),
-                    "spotify_logged_in": bool(tok and tok.get("refresh_token")),
+                    # ★ 粘贴的 token 没有 refresh_token，但同样算「已登录」✅
+                    "spotify_logged_in": bool(
+                        tok
+                        and (
+                            tok.get("refresh_token")
+                            or (tok.get("pasted") and tok.get("expires_at", 0) > time.time())
+                        )
+                    ),
+                    "spotify_pasted": pasted_token_status(),
                 }
             )
             return
@@ -1161,6 +1198,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json({"id": sid, "storefront": sf, "isrc": apple_isrc_lookup(sid, sf)})
             return
+        if parsed.path == "/api/spotify/token":
+            # ★ 粘贴 token：免 PKCE 登录 ✅（本机接口，token 不落日志 ✅）
+            qs = urllib.parse.parse_qs(parsed.query)
+            raw_token = (qs.get("token") or [""])[0]
+            if not raw_token:
+                self._json({"error": "missing token"}, 400)
+                return
+            try:
+                self._json(save_pasted_token(raw_token))
+            except Exception as exc:
+                self._json({"error": str(exc)[:160]}, 400)
+            return
+
         if parsed.path == "/api/spotify/logout":
             try:
                 if os.path.exists(TOKEN_FILE):
