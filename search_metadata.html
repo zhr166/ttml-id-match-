@@ -1011,7 +1011,7 @@ $("spLogin").addEventListener("click", async () => {
       }
       if (!r.ok || d.error) throw new Error(d.error || ("HTTP " + r.status));
       $("smToken").value = "";
-      setStatus("token 已保存 ✅ " + (d.expires_hint || ""));
+      setStatus("token 已保存 ✅ " + (d.note || "") + " " + (d.expires_hint || ""));
       await refreshTokenState();
     } catch (err) {
       setStatus("保存失败：" + (err && err.message ? err.message : String(err)), true);
