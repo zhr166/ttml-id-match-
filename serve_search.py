@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import argparse
 import base64
+import difflib
 import json
 import os
+import re
 import sys
 import threading
 import urllib.parse
@@ -232,6 +234,265 @@ def spotify_search(term: str, market: str, limit: int, token: str) -> list[dict]
             }
         )
     return out
+
+
+# ---------------------------------------------------------------- SpotMatch
+# 「同一录音的其他 Spotify ID」查找器 ✅
+# 参考 ttmleditor.com 里 SpotMatch(bx24) 的功能**自行实现**（未使用其代码 ✅）。
+# 思路：拿源曲的 标题 / 艺人 / 时长 → 多查询 × 多地区搜 Spotify →
+#       按「标题相似度 + 艺人相似度 + 时长差」打分 → 过滤 → 排序 ✅
+SPOTIFY_TRACK = "https://api.spotify.com/v1/tracks/"
+
+_BRACKET_RE = re.compile(r"[\(\[（【][^\)\]）】]*[\)\]）】]")
+_NOISE_RE = re.compile(
+    r"\b(remaster(?:ed)?|live|acoustic|instrumental|karaoke|off\s*vocal|"
+    r"version|edit|radio\s*edit|mono|stereo|deluxe|bonus|explicit|clean|"
+    r"feat\.?|ft\.?|featuring)\b",
+    re.I,
+)
+_PUNCT_RE = re.compile(r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+", re.U)
+# 伴奏 / 卡拉OK / 纯音乐 等「同曲不同用途」版本：不是同一录音，降权 ✅
+_VARIANT_RE = re.compile(
+    r"(instrumental|karaoke|off\s*vocal|backing\s*track|inst\.|伴奏|卡拉ok|カラオケ|オフボーカル|纯音乐|純音樂)",
+    re.I,
+)
+
+
+def _norm_title(text: str) -> str:
+    """标题归一化：去括号补充、去 remaster/live/feat 等噪声、统一 and、去标点 ✅"""
+    s = (text or "").lower()
+    s = _BRACKET_RE.sub(" ", s)
+    s = _NOISE_RE.sub(" ", s)
+    s = s.replace("&", " and ")
+    s = _PUNCT_RE.sub(" ", s)
+    return " ".join(s.split())
+
+
+def _sim(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _split_title(text: str) -> tuple[str, str]:
+    """拆出「主标题 / 副标题」—— Spotify 常见写法 `Title - Remix / 和弦伴奏` ✅
+    副标题不再直接拖低相似度，而是按权重打折（截图里这类是 92%）✅"""
+    raw = (text or "").strip()
+    parts = re.split(r"\s+[-–—]\s+", raw)
+    if len(parts) <= 1:
+        return raw, ""
+    return parts[0], " - ".join(p for p in parts[1:] if p)
+
+
+def spotify_track(track_id: str, token: str) -> dict:
+    data = _get_json(f"{SPOTIFY_TRACK}{track_id}", headers={"Authorization": f"Bearer {token}"})
+    album = data.get("album") or {}
+    images = album.get("images") or []
+    return {
+        "id": data.get("id") or track_id,
+        "name": data.get("name") or "",
+        "artists": [a.get("name") or "" for a in (data.get("artists") or [])],
+        "album": album.get("name") or "",
+        "duration_ms": int(data.get("duration_ms") or 0),
+        "release_date": (album.get("release_date") or "")[:10],
+        "artwork": (images[-1].get("url") if images else "") or "",
+        "url": (data.get("external_urls") or {}).get("spotify") or "",
+        "isrc": (data.get("external_ids") or {}).get("isrc") or "",
+    }
+
+
+def _extract_track_id(raw: str) -> str:
+    """支持 spotify:track:ID / open.spotify.com/track/ID / 纯 22 位 ID ✅"""
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    m = re.search(r"track[:/]([A-Za-z0-9]{22})", s)
+    if m:
+        return m.group(1)
+    m = re.search(r"\b([A-Za-z0-9]{22})\b", s)
+    return m.group(1) if m else ""
+
+
+SPOTMATCH_MARKETS = {
+    "浅": ["us", "jp", "tw"],
+    "浅度": ["us", "jp", "tw"],
+    "shallow": ["us", "jp", "tw"],
+    "标准": ["us", "gb", "jp", "tw", "kr", "hk", "ca", "de"],
+    "normal": ["us", "gb", "jp", "tw", "kr", "hk", "ca", "de"],
+    "深度": ["us", "gb", "jp", "tw", "kr", "hk", "ca", "de", "fr", "au", "br", "mx", "se", "nl"],
+    "deep": ["us", "gb", "jp", "tw", "kr", "hk", "ca", "de", "fr", "au", "br", "mx", "se", "nl"],
+}
+
+
+def _source_from_item(item: dict) -> dict:
+    """把搜索结果行转成与 spotify_track() 同形状的 source ✅（省一次 API 调用）"""
+    return {
+        "id": item.get("track_id") or "",
+        "name": item.get("name") or "",
+        "artists": [a.strip() for a in (item.get("artist") or "").split(",") if a.strip()],
+        "album": item.get("album") or "",
+        "duration_ms": int(item.get("duration_ms") or 0),
+        "release_date": item.get("release_date") or "",
+        "artwork": item.get("artwork") or "",
+        "url": item.get("url") or "",
+        "isrc": item.get("isrc") or "",
+    }
+
+
+def spotmatch(
+    track_input: str = "",
+    min_match: int = 60,
+    max_delta: int = 10,
+    exact: bool = False,
+    preset: str = "标准",
+    markets: list[str] | None = None,
+    query: str = "",
+) -> dict:
+    """查找同一录音的其他 Spotify ID ✅
+
+    两种入口：
+      · track_input：Spotify Track ID / 链接 ✅
+      · query      ：歌名（可带歌手），先搜到曲目再匹配 ✅
+    """
+    token = spotify_token()
+    if not token:
+        raise ValueError("Spotify 未配置：请在 .env 填 SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET，或点「登录 Spotify」")
+
+    picked = markets or SPOTMATCH_MARKETS.get((preset or "").strip().lower()) or SPOTMATCH_MARKETS["标准"]
+    resolved_by = "id"
+    search_candidates: list[dict] = []
+
+    query = (query or "").strip()
+    if query and not _extract_track_id(track_input):
+        # ★ 按歌名搜索：取第一条作为源曲 ✅（同时把候选带回去，方便界面显示"可能是这几首"）
+        first_market = picked[0] if picked else "us"
+        try:
+            found = spotify_search(query, first_market, 10, token)
+        except Exception as exc:
+            raise ValueError(f"按歌名搜索失败：{str(exc)[:120]}") from exc
+        if not found:
+            raise ValueError("按这个歌名没搜到曲目 ✅ 换个写法（加上歌手名）再试 ✅")
+        search_candidates = [dict(_source_from_item(f)) for f in found[:5]]
+        source = _source_from_item(found[0])
+        resolved_by = "query"
+    else:
+        tid = _extract_track_id(track_input)
+        if not tid:
+            raise ValueError("无法识别 Spotify Track ID（支持 spotify:track:… / open.spotify.com/track/… / 22 位 ID），也可以直接输入歌名 ✅")
+        source = spotify_track(tid, token)
+
+    src_title = source["name"]
+    src_norm = _norm_title(src_title)
+    src_artist = source["artists"][0] if source["artists"] else ""
+    src_artists_norm = " ".join(_norm_title(a) for a in source["artists"])
+
+    # 多查询策略：标题+艺人 / 精确标题 / 归一化标题 / 归一化标题+艺人 ✅
+    queries: list[str] = []
+    for q in (f"{src_title} {src_artist}", f'"{src_title}"', src_norm,
+              (f"{src_norm} {_norm_title(src_artist)}" if src_artist else "")):
+        q = (q or "").strip()
+        if q and q.lower() not in {x.lower() for x in queries}:
+            queries.append(q)
+
+    picked = markets or SPOTMATCH_MARKETS.get((preset or "").strip().lower()) or SPOTMATCH_MARKETS["标准"]
+
+    seen: dict[str, dict] = {}
+    errors: list[str] = []
+    for mi, market in enumerate(picked):
+        # 第一个地区跑全部查询，其余地区只跑前 2 个（控速 ✅）
+        for q in (queries if mi == 0 else queries[:2]):
+            try:
+                for item in spotify_search(q, market, 50, token):
+                    real_id = (item.get("track_id") or "").strip()
+                    if not real_id:
+                        continue
+                    prev = seen.get(real_id)
+                    if prev is not None:
+                        if market not in prev["markets"]:
+                            prev["markets"].append(market)
+                        continue
+                    seen[real_id] = {**item, "markets": [market]}
+            except Exception as exc:
+                errors.append(f"{market}: {str(exc)[:70]}")
+
+    src_dur = int(source["duration_ms"] or 0)
+    src_main, src_sub = _split_title(src_title)
+    src_main_norm = _norm_title(src_main)
+    results: list[dict] = []
+    for item in seen.values():
+        cand_title = item.get("name") or ""
+        cand_norm = _norm_title(cand_title)
+        # ★ 伴奏/卡拉OK/纯音乐 这类"同曲不同用途"版本不算「同一标题」✅
+        #   （否则括号被归一化掉 → 会被 0.99 的 same_title 兜底抬到 99% ❌）
+        is_variant = bool(_VARIANT_RE.search(cand_title)) and not _VARIANT_RE.search(src_title)
+        same_title = bool(src_norm) and cand_norm == src_norm and not is_variant
+
+        if exact and not same_title:
+            continue
+
+        if exact:
+            title_score = 1.0
+        else:
+            cand_main, cand_sub = _split_title(cand_title)
+            # ① 整标题相似度 ② 主标题相似度（副标题按 0.92 打折 ✅）
+            full_score = max(_sim(cand_title.lower(), src_title.lower()), _sim(cand_norm, src_norm))
+            main_score = _sim(_norm_title(cand_main), src_main_norm)
+            if cand_sub and not src_sub:
+                main_score *= 0.92
+            title_score = max(full_score, main_score)
+            if same_title:
+                title_score = max(title_score, 0.99)
+            # 降权放在最后打 ✅（前面的 max 兜底会吃掉它 ❌）
+            if is_variant:
+                title_score *= 0.85
+
+        artist_score = max(
+            _sim(_norm_title(item.get("artist") or ""), src_artists_norm),
+            _sim(_norm_title(item.get("artist") or ""), _norm_title(src_artist)),
+        )
+
+        cand_dur = int(item.get("duration_ms") or 0)
+        if src_dur and cand_dur:
+            delta_ms = abs(cand_dur - src_dur)
+        else:
+            delta_ms = max_delta * 1000 + 1
+        if delta_ms > max_delta * 1000:
+            continue
+        dur_score = max(0.0, 1.0 - (delta_ms / max(1, max_delta * 1000)))
+
+        match = round(100 * (0.68 * title_score + 0.22 * artist_score + 0.10 * dur_score))
+        if match < min_match:
+            continue
+
+        results.append({
+            "id": item.get("track_id") or "",
+            "name": cand_title,
+            "artist": item.get("artist") or "",
+            "album": item.get("album") or "",
+            "duration_ms": cand_dur,
+            "delta_ms": delta_ms,
+            "match": match,
+            "isrc": item.get("isrc") or "",
+            "release_date": item.get("release_date") or "",
+            "artwork": item.get("artwork") or "",
+            "url": item.get("url") or "",
+            "markets": item.get("markets") or [],
+            "is_source": (item.get("track_id") or "") == source["id"],
+        })
+
+    results.sort(key=lambda x: (-x["match"], x["delta_ms"]))
+    return {
+        "source": source,
+        "results": results,
+        "count": len(results),
+        "scanned": len(seen),
+        "queries": queries,
+        "markets": picked,
+        "errors": errors[:5],
+        # ★ 按歌名搜索时有值 ✅（界面可显示"识别到的是哪首"）
+        "resolved_by": resolved_by,
+        "candidates": search_candidates,
+    }
 
 
 def deezer_search(term: str, market: str, limit: int) -> list[dict]:
@@ -750,6 +1011,31 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             self._json({"ok": True})
+            return
+
+        if parsed.path == "/api/spotmatch":
+            # SpotMatch：给一个 Spotify Track ID / 链接 / **歌名**，找同一录音的其他 ID ✅
+            qs = urllib.parse.parse_qs(parsed.query)
+            target = ((qs.get("id") or qs.get("url") or [""])[0] or "").strip()
+            keyword = ((qs.get("q") or [""])[0] or "").strip()
+            try:
+                min_match = max(1, min(100, int((qs.get("min") or ["60"])[0])))
+            except ValueError:
+                min_match = 60
+            try:
+                max_delta = max(1, min(60, int((qs.get("delta") or ["10"])[0])))
+            except ValueError:
+                max_delta = 10
+            exact = ((qs.get("exact") or ["0"])[0] or "").strip().lower() in ("1", "true", "yes", "on")
+            preset = ((qs.get("preset") or ["标准"])[0] or "标准").strip()
+            markets = [m.strip().lower() for m in (qs.get("markets") or [""])[0].split(",") if m.strip()]
+            if not target and not keyword:
+                self._json({"error": "missing id or q"}, 400)
+                return
+            try:
+                self._json(spotmatch(target, min_match, max_delta, exact, preset, markets or None, keyword))
+            except Exception as exc:
+                self._json({"error": str(exc)[:200]}, 400)
             return
 
         if parsed.path == "/api/search":
