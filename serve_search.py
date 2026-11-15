@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -339,6 +340,156 @@ def _source_from_item(item: dict) -> dict:
     }
 
 
+# ------------------------------------------------------- 免登录模式（无需凭据 ✅）
+# Spotify 已封匿名接口（匿名 token 403 / embed 500 / oembed 504 ❌）
+# 所以免登录走：Deezer 搜索（公开 ✅）→ ISRC → MusicBrainz（公开 ✅）→ Spotify ID ✅
+MB_UA_SPOT = {"User-Agent": "MusicMetaSearch/1.4 ( https://github.com/zhr166/ttml-id-match- )"}
+
+
+def _deezer_tracks(term: str, limit: int = 25) -> list[dict]:
+    q = urllib.parse.urlencode({"q": term, "limit": limit})
+    data = _get_json(f"https://api.deezer.com/search?{q}", headers=MB_UA_SPOT, timeout=25)
+    out = []
+    for t in data.get("data") or []:
+        artist = (t.get("artist") or {}).get("name") or ""
+        album = (t.get("album") or {}).get("title") or ""
+        cover = (t.get("album") or {}).get("cover_medium") or ""
+        out.append({
+            "track_id": str(t.get("id") or ""),
+            "name": t.get("title") or "",
+            "artist": artist,
+            "album": album,
+            "duration_ms": int(t.get("duration") or 0) * 1000,
+            "artwork": cover,
+            "url": t.get("link") or "",
+            "isrc": "",
+        })
+    return out
+
+
+def _deezer_isrc(track_id: str) -> str:
+    try:
+        d = _get_json(f"https://api.deezer.com/track/{track_id}", headers=MB_UA_SPOT, timeout=20)
+        return (d.get("isrc") or "").strip()
+    except Exception:
+        return ""
+
+
+def _mb_spotify_ids_by_isrc(isrc: str) -> list[str]:
+    """ISRC → MusicBrainz 录音 → 该录音的 Spotify 链接（免登录 ✅）"""
+    if not isrc:
+        return []
+    try:
+        q = urllib.parse.urlencode({"query": f"isrc:{isrc}", "fmt": "json", "limit": 1})
+        recs = _get_json(f"https://musicbrainz.org/ws/2/recording?{q}", headers=MB_UA_SPOT, timeout=25)
+        recordings = recs.get("recordings") or []
+    except Exception:
+        return []
+    ids: list[str] = []
+    for rec in recordings[:1]:
+        try:
+            time.sleep(1.05)  # MusicBrainz 限速 1 req/s ✅
+            rel = _get_json(
+                f"https://musicbrainz.org/ws/2/recording/{rec['id']}?inc=url-rels&fmt=json",
+                headers=MB_UA_SPOT, timeout=25)
+        except Exception:
+            continue
+        for r in rel.get("relations") or []:
+            res = ((r.get("url") or {}).get("resource")) or ""
+            m = re.search(r"open\.spotify\.com/track/([A-Za-z0-9]{22})", res)
+            if m and m.group(1) not in ids:
+                ids.append(m.group(1))
+    return ids
+
+
+def spotmatch_noauth(query: str, min_match: int = 60, max_delta: int = 10,
+                     exact: bool = False, max_candidates: int = 8) -> dict:
+    """免登录 SpotMatch：Deezer 搜候选 → ISRC → MusicBrainz → Spotify ID ✅"""
+    term = (query or "").strip()
+    if not term:
+        raise ValueError("免登录模式需要歌名（可带歌手）✅")
+    cands = _deezer_tracks(term, 25)
+    if not cands:
+        raise ValueError("Deezer 没搜到这个歌名 ✅ 换个写法（加歌手名 / 用英文名）再试 ✅")
+
+    src = cands[0]
+    src_norm = _norm_title(src["name"])
+    src_dur = int(src["duration_ms"] or 0)
+
+    results: list[dict] = []
+    seen_ids: set[str] = set()
+    scanned = 0
+    for cand in cands[:max_candidates]:
+        scanned += 1
+        cand_dur = int(cand["duration_ms"] or 0)
+        delta_ms = abs(cand_dur - src_dur) if (src_dur and cand_dur) else 99999
+        if delta_ms > max_delta * 1000:
+            continue
+        cand_norm = _norm_title(cand["name"])
+        same = bool(src_norm) and cand_norm == src_norm
+        title_score = max(_sim(cand["name"].lower(), src["name"].lower()), _sim(cand_norm, src_norm))
+        if same:
+            title_score = max(title_score, 0.99)
+        if _VARIANT_RE.search(cand["name"]) and not _VARIANT_RE.search(src["name"]):
+            title_score *= 0.85
+        if exact and not same:
+            continue
+        artist_score = _sim(_norm_title(cand["artist"]), _norm_title(src["artist"]))
+        dur_score = max(0.0, 1.0 - (delta_ms / max(1, max_delta * 1000)))
+        match = round(100 * (0.68 * title_score + 0.22 * artist_score + 0.10 * dur_score))
+        if match < min_match:
+            continue
+
+        isrc = _deezer_isrc(cand["track_id"]) if cand["track_id"] else ""
+        spots = _mb_spotify_ids_by_isrc(isrc)
+        if not spots:
+            continue
+        for sid in spots:
+            if sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            results.append({
+                "id": sid,
+                "name": cand["name"],
+                "artist": cand["artist"],
+                "album": cand["album"],
+                "duration_ms": cand_dur,
+                "delta_ms": delta_ms,
+                "match": match,
+                "isrc": isrc,
+                "release_date": "",
+                "artwork": cand["artwork"],
+                "url": f"https://open.spotify.com/track/{sid}",
+                "markets": [],
+                "is_source": False,
+            })
+
+    results.sort(key=lambda x: (-x["match"], x["delta_ms"]))
+    source_out = {
+        "id": "",
+        "name": src["name"],
+        "artists": [a.strip() for a in (src.get("artist") or "").split(",") if a.strip()],
+        "album": src.get("album") or "",
+        "duration_ms": src_dur,
+        "release_date": "",
+        "artwork": src.get("artwork") or "",
+        "url": src.get("url") or "",
+        "isrc": "",
+    }
+    return {
+        "source": source_out,
+        "results": results,
+        "count": len(results),
+        "scanned": scanned,
+        "queries": [term],
+        "markets": ["deezer+musicbrainz"],
+        "errors": [] if results else ["MusicBrainz 未收录这批曲目的 Spotify 链接"],
+        "resolved_by": "deezer",
+        "candidates": [],
+        "mode": "免登录（Deezer + MusicBrainz）",
+    }
+
+
 def spotmatch(
     track_input: str = "",
     min_match: int = 60,
@@ -355,8 +506,14 @@ def spotmatch(
       · query      ：歌名（可带歌手），先搜到曲目再匹配 ✅
     """
     token = spotify_token()
+    query = (query or "").strip()
     if not token:
-        raise ValueError("Spotify 未配置：请在 .env 填 SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET，或点「登录 Spotify」")
+        # ★ 没凭据 → 自动走**免登录模式**（Deezer + MusicBrainz ✅）
+        if query:
+            return spotmatch_noauth(query, min_match, max_delta, exact)
+        raise ValueError(
+            "免登录模式只能按歌名搜索 ✅；要按 Spotify ID 查询，请先在 .env 配置 "
+            "SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET，或点「登录 Spotify」")
 
     picked = markets or SPOTMATCH_MARKETS.get((preset or "").strip().lower()) or SPOTMATCH_MARKETS["标准"]
     resolved_by = "id"
