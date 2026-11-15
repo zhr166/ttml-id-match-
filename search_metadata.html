@@ -1003,7 +1003,12 @@ $("spLogin").addEventListener("click", async () => {
     if (!v) { setStatus("先把 token 粘进来 ✅", true); return; }
     try {
       const r = await fetch(apiBase() + "/api/spotify/token?" + new URLSearchParams({ token: v }));
-      const d = await r.json();
+      const txt = await r.text();
+      let d = {};
+      try { d = JSON.parse(txt); } catch {
+        // ★ 旧版程序没有这个接口 → 返回纯文本 "not found" ✅ 这里给出能看懂的提示
+        throw new Error(`服务端返回的是纯文本（${txt.slice(0, 40)}）→ 说明你运行的是**旧版程序**，请用 v1.3.8 的新包 ✅`);
+      }
       if (!r.ok || d.error) throw new Error(d.error || ("HTTP " + r.status));
       $("smToken").value = "";
       setStatus("token 已保存 ✅ " + (d.expires_hint || ""));
