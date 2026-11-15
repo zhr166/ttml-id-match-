@@ -55,20 +55,37 @@ def _get_json(url: str, headers: dict | None = None, timeout: int = 30) -> dict:
 
 
 def read_env_file() -> dict:
+    """读 .env ✅
+    依次尝试（先找到的优先）：
+      ① 程序目录/.env（打包后是 _internal/.env ✅）
+      ② **exe 同级的上一级目录**/.env ← 打包后用户能直接看到、方便手填 ✅
+      ③ 当前工作目录/.env
+    """
     env: dict[str, str] = {}
-    path = os.path.join(HERE, ".env")
-    if not os.path.exists(path):
-        return env
+    candidates = [os.path.join(HERE, ".env")]
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                env[k.strip()] = v.strip().strip('"').strip("'")
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        candidates.append(os.path.join(exe_dir, ".env"))
+        candidates.append(os.path.join(os.path.dirname(exe_dir), ".env"))
     except Exception:
         pass
+    candidates.append(os.path.join(os.getcwd(), ".env"))
+
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    if k and k not in env:          # 先读到的优先 ✅
+                        env[k] = v.strip().strip('"').strip("'")
+        except Exception:
+            continue
     return env
 
 
@@ -526,7 +543,23 @@ def spotmatch(
         try:
             found = spotify_search(query, first_market, 10, token)
         except Exception as exc:
-            raise ValueError(f"按歌名搜索失败：{str(exc)[:120]}") from exc
+            msg = str(exc)
+            expired = ("401" in msg) or ("403" in msg) or ("Unauthorized" in msg)
+            if expired:
+                # 粘贴的 token 过期/无效 → 清掉它，之后直接走免登录 ✅
+                try:
+                    if os.path.exists(TOKEN_FILE):
+                        os.remove(TOKEN_FILE)
+                except Exception:
+                    pass
+                # **自动回退免登录模式** ✅（不要直接报错 ❌）
+                out = spotmatch_noauth(query, min_match, max_delta, exact)
+                out["errors"] = [
+                    "粘贴的 Spotify token 已失效（401/403）→ 已自动改用**免登录模式** ✅"
+                ] + list(out.get("errors") or [])
+                out["mode"] = "免登录（Deezer + MusicBrainz）· token 已失效自动回退"
+                return out
+            raise ValueError(f"按歌名搜索失败：{msg[:120]}") from exc
         if not found:
             raise ValueError("按这个歌名没搜到曲目 ✅ 换个写法（加上歌手名）再试 ✅")
         search_candidates = [dict(_source_from_item(f)) for f in found[:5]]
@@ -536,7 +569,15 @@ def spotmatch(
         tid = _extract_track_id(track_input)
         if not tid:
             raise ValueError("无法识别 Spotify Track ID（支持 spotify:track:… / open.spotify.com/track/… / 22 位 ID），也可以直接输入歌名 ✅")
-        source = spotify_track(tid, token)
+        try:
+            source = spotify_track(tid, token)
+        except Exception as exc:
+            msg = str(exc)
+            if ("401" in msg) or ("403" in msg) or ("Unauthorized" in msg):
+                raise ValueError(
+                    "粘贴的 Spotify token 已失效（401/403）✅ 请重新粘贴 token，"
+                    "或直接输入**歌名**（免登录模式可用 ✅）") from exc
+            raise
 
     src_title = source["name"]
     src_norm = _norm_title(src_title)
@@ -842,6 +883,27 @@ def save_pasted_token(token: str) -> dict:
     tok = tok.replace("Bearer", "").replace("bearer", "").strip()
     if len(tok) < 40:
         raise ValueError("token 看起来不完整（长度 < 40）✅ 请重新复制")
+
+    # ★ 保存前先**校验**（/v1/me）→ 无效就不存，避免"显示已保存但其实用不了" ❌
+    verify_note = ""
+    try:
+        req = urllib.request.Request(
+            "https://api.spotify.com/v1/me",
+            headers={"Authorization": f"Bearer {tok}", "Accept": "application/json", "User-Agent": UA},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            me = json.loads(resp.read().decode())
+        verify_note = f"（账号：{me.get('display_name') or me.get('id') or '已验证'} ✅）"
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise ValueError(
+                "这个 token 已被 Spotify 判为**失效/过期**（401）❌ 没保存。\n"
+                "请：刷新 open.spotify.com → F12 → Network → 点**最新**的 api.spotify.com 请求 "
+                "→ 复制 authorization 里 Bearer 后面那串（BQ 开头）→ 立刻粘贴 ✅")
+        verify_note = f"（校验接口返回 {exc.code}，仍按已保存处理 ⚠️）"
+    except Exception:
+        verify_note = "（离线，未能校验 ⚠️）"
+
     save_user_token({
         "access_token": tok,
         "expires_at": time.time() + 3000,   # 按约 50 分钟算 ✅
@@ -849,7 +911,13 @@ def save_pasted_token(token: str) -> dict:
         "pasted": True,
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     })
-    return {"ok": True, "length": len(tok), "expires_hint": "约 50 分钟后失效，过期重新粘贴即可 ✅"}
+    return {
+        "ok": True,
+        "length": len(tok),
+        "verified": bool(verify_note),
+        "note": verify_note,
+        "expires_hint": "约 50 分钟后失效（access token 不能自动续期）；想永久免登录请在 .env 配 SPOTIFY_CLIENT_ID/SECRET ✅",
+    }
 
 
 def pasted_token_status() -> dict:
