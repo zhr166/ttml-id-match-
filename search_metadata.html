@@ -543,23 +543,25 @@ function render() {
                   <img src="${t.artwork || ""}" alt="" loading="lazy" />
                   <div class="row-info">
                     <div class="t">${esc(t.name)} ${(t.countries || []).filter((c) => c && c !== "--").map((c) => `<span class="chip">${c}</span>`).join(" ")}</div>
-                    <div class="a">${esc(t.artist)} — ${esc(t.album)}${t.album_id ? ` <span class="srcpill albumid">专辑ID ${esc(t.album_id)}</span>` : ""}</div>
+                    <div class="a">${esc(t.artist)}${t.album_id ? ` <span class="srcpill albumid">专辑ID ${esc(t.album_id)}</span>` : ""}</div>
                     <div class="meta">
                       <span>${fmtDur(t.duration_ms)}</span>
                       ${t.genre ? `<span>${esc(t.genre)}</span>` : ""}
+                      <span class="chip">专辑 ${esc(t.album || "—")}</span>
                       <span>${esc(t.release_date || "")}</span>
-                      <span class="chip ok">${t.source === "spotify" ? "Track " : t.source === "qq" ? "songmid " : t.source === "netease" ? "网易云 ID " : "Apple ID "}${esc(t.track_id)}</span>
+                      <span class="chip ok">${t.source === "spotify" ? "Spotify ID " : t.source === "qq" ? "songmid " : t.source === "netease" ? "网易云 ID " : "Apple ID "}${esc(t.track_id)}</span>
                       ${t.song_id ? `<span class="chip ok">QQ数字ID ${esc(t.song_id)}</span>` : ""}
                       ${t.album_id_num ? `<span class="chip">专辑数字ID ${esc(t.album_id_num)}</span>` : ""}
-                      ${t.spotify_id ? `<span class="chip ok">Spotify ID ${esc(t.spotify_id)}</span>` : ""}
-                      ${t.isrc ? `<span class="chip ok">ISRC ${esc(t.isrc)}</span>` : ""}
+                      ${t.spotify_id && t.source !== "spotify" ? `<span class="chip ok">Spotify ID ${esc(t.spotify_id)}</span>` : ""}
+                      <span class="chip ok">ISRC ${esc(t.isrc || "—")}</span>
                     </div>
                   </div>
                 </div>
                 <div class="acts">
                   <button data-copy="${i}">${T("copyId")}</button>
                   <button data-copyname="${i}">${T("copyName")}</button>
-                  ${t.isrc ? `<button data-copyisrc="${i}">${T("copyIsrc")}</button>` : ""}
+                  ${(t.spotify_id || t.source === "spotify") ? `<button data-copyspid="${i}">${T("copySpId") || "复制 Spotify ID"}</button>` : ""}
+                  <button data-copyisrc="${i}" ${t.isrc ? "" : "disabled title=\"该来源没有 ISRC\""}>${T("copyIsrc")}</button>
                   <button data-copyalbum="${i}">${T("copyAlbum")}</button>
                   ${t.album_id ? `<button data-copyalbumid="${i}">${T("copyAlbumId")}</button>` : ""}
                   <button data-copyline="${i}">${T("copyLine")}</button>
@@ -594,6 +596,7 @@ $("list").addEventListener("click", (e) => {
   const c = e.target.closest("[data-copy]");
   const cn = e.target.closest("[data-copyname]");
   const ci = e.target.closest("[data-copyisrc]");
+  const csp = e.target.closest("[data-copyspid]");
   const ca = e.target.closest("[data-copyalbum]");
   const cai = e.target.closest("[data-copyalbumid]");
   const cl = e.target.closest("[data-copyline]");
@@ -605,7 +608,12 @@ $("list").addEventListener("click", (e) => {
     navigator.clipboard.writeText(String(text ?? "")).then(() => toast("已复制" + (label ? "：" + label : "")), () => toast("复制失败"));
   if (c) { const t = lastResults[Number(c.dataset.copy)]; put(t.track_id, t.track_id); }
   if (cn) { const t = lastResults[Number(cn.dataset.copyname)]; put(t.name, t.name); }
-  if (ci) { const t = lastResults[Number(ci.dataset.copyisrc)]; put(t.isrc, t.isrc); }
+  if (ci) { const t = lastResults[Number(ci.dataset.copyisrc)]; put(t.isrc, t.isrc || "（无 ISRC）"); }
+  if (csp) {
+    const t = lastResults[Number(csp.dataset.copyspid)];
+    const sid = t.spotify_id || (t.source === "spotify" ? t.track_id : "");
+    put(sid, sid || "（无 Spotify ID）");
+  }
   if (ca) { const t = lastResults[Number(ca.dataset.copyalbum)]; put(t.album, t.album); }
   if (cai) { const t = lastResults[Number(cai.dataset.copyalbumid)]; put(t.album_id, t.album_id); }
   if (cl) {
@@ -769,6 +777,14 @@ $("spLogin").addEventListener("click", async () => {
       <option>2</option><option>5</option><option selected>10</option><option>20</option><option>30</option>
     </select> 秒</label>
     <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="smExact" /> 精确标题</label>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;font-size:12px">
+    <input id="smToken" type="password" autocomplete="off"
+      placeholder="可选：粘贴 Spotify access token（open.spotify.com → F12 → 任一 api.spotify.com 请求 → Authorization: Bearer …）"
+      style="flex:1 1 320px;min-width:240px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg)" />
+    <button id="smTokenSave">保存 token</button>
+    <button id="smTokenClear" title="清除已保存的 token">清除</button>
+    <span id="smTokenState" style="color:var(--dim)"></span>
   </div>
   <div id="smStatus" style="color:var(--dim);font-size:12px;margin-top:8px">需要 Spotify 凭据（.env 里的 CLIENT_ID/SECRET，或先点上面「登录 Spotify」）✅</div>
   <div id="smSource" style="margin-top:10px"></div>
@@ -962,11 +978,52 @@ $("spLogin").addEventListener("click", async () => {
     }
   });
 
+  /* ── 粘贴 token（免 PKCE 登录 ✅）── */
+  async function refreshTokenState() {
+    const el = $("smTokenState");
+    if (!el) return;
+    try {
+      const s = await (await fetch(apiBase() + "/api/status")).json();
+      if (s.spotify_pasted && s.spotify_pasted.pasted) {
+        el.style.color = "#4ade80";
+        el.textContent = `已保存粘贴的 token（约剩 ${s.spotify_pasted.minutes_left} 分钟）✅`;
+      } else if (s.spotify_logged_in) {
+        el.style.color = "#4ade80";
+        el.textContent = "已登录 Spotify ✅";
+      } else {
+        el.style.color = "var(--dim)";
+        el.textContent = "未登录（可用免登录模式按歌名查 ✅）";
+      }
+    } catch {
+      el.textContent = "";
+    }
+  }
+  $("smTokenSave") && $("smTokenSave").addEventListener("click", async () => {
+    const v = ($("smToken").value || "").trim();
+    if (!v) { setStatus("先把 token 粘进来 ✅", true); return; }
+    try {
+      const r = await fetch(apiBase() + "/api/spotify/token?" + new URLSearchParams({ token: v }));
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || ("HTTP " + r.status));
+      $("smToken").value = "";
+      setStatus("token 已保存 ✅ " + (d.expires_hint || ""));
+      await refreshTokenState();
+    } catch (err) {
+      setStatus("保存失败：" + (err && err.message ? err.message : String(err)), true);
+    }
+  });
+  $("smTokenClear") && $("smTokenClear").addEventListener("click", async () => {
+    await fetch(apiBase() + "/api/spotify/logout").catch(() => {});
+    setStatus("已清除 token ✅");
+    await refreshTokenState();
+  });
+
   /* ── 弹窗开关 ✅（按钮 / ✕ / 点遮罩 / Esc / Ctrl+Shift+M）── */
   const smPanel = $("smPanel");
   const openSmatch = () => {
     if (!smPanel) return;
     smPanel.style.display = "flex";
+    void refreshTokenState();
     const inp = $("smInput");
     if (inp) setTimeout(() => inp.focus(), 30);
   };
